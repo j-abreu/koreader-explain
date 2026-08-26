@@ -1,4 +1,4 @@
-# kindle-ai-dictionary
+# KOReader Explain
 
 A context-aware dictionary and explanation plugin for jailbroken Kindles running KOReader.
 
