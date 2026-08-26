@@ -1,0 +1,10 @@
+.DS_Store
+*.log
+
+# Local device and endpoint configuration
+configuration.lua
+*.local.lua
+
+# Test and tooling output
+.cache/
+coverage/
