@@ -39,4 +39,24 @@ function ExplanationViewer.show(explanation, retry_callback)
     UIManager:show(viewer)
 end
 
+function ExplanationViewer.showRequestInspection(request_json)
+    local viewer
+    viewer = TextViewer:new {
+        title = _("Request preview"),
+        text = request_json,
+        show_menu = false,
+        buttons_table = {
+            {
+                {
+                    text = _("Close"),
+                    callback = function()
+                        viewer:onClose()
+                    end,
+                },
+            },
+        },
+    }
+    UIManager:show(viewer)
+end
+
 return ExplanationViewer

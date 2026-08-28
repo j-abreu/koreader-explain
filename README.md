@@ -8,7 +8,7 @@ The first vertical slice captures selected text and bounded ebook context, calls
 
 The first live device slice is scaffolded. It adds **Explain in context** to KOReader's selection menu and **Explain** to the native dictionary popup, captures bounded ebook context plus available book and chapter metadata, calls the source-bound version 2 Context Explain API in a background subprocess, validates its response, and displays the structured explanation in a native viewer.
 
-The explanation viewer provides **Retry** to resubmit the exact captured snapshot and **Close** to return to the book.
+The explanation viewer provides **Retry** to resubmit the exact captured snapshot and **Close** to return to the book. **Inspect context** is a local-only action that shows the exact version 2 JSON request body, including any earlier mentions, without calling the API.
 
 The initial context window captures up to 50 words on each side of the selection. The nearest 450 Unicode characters from each side are retained so the request remains within the API's field limits. For one- and two-word selections in reflowable books, it also searches locally for up to five earlier occurrences and sends a 280-character excerpt for each match. PDF and other unsupported formats continue with immediate context only.
 

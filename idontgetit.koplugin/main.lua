@@ -24,6 +24,14 @@ function KindleAIDictionary:init()
             end,
         }
     end)
+    self.ui.highlight:addToHighlightDialog("idontgetit_inspect", function(highlight)
+        return {
+            text = _("Inspect context"),
+            callback = function()
+                self:inspectCapturedContext(highlight)
+            end,
+        }
+    end)
 
     if self.ui.dictionary then
         self.ui.dictionary:addToDictButtons {
@@ -33,6 +41,14 @@ function KindleAIDictionary:init()
             insert_first = true,
             callback = function(dict_popup)
                 self:showCapturedContext(dict_popup.highlight, dict_popup.word)
+            end,
+        }
+        self.ui.dictionary:addToDictButtons {
+            id = "idontgetit_inspect",
+            menu_text = _("Inspect context"),
+            text = _("Inspect context"),
+            callback = function(dict_popup)
+                self:inspectCapturedContext(dict_popup.highlight, dict_popup.word)
             end,
         }
     end
@@ -47,18 +63,16 @@ function KindleAIDictionary:showCapturedContext(highlight, fallback_text)
         return
     end
 
-    self:collectPriorMentionsThenExplain(snapshot)
-end
-
-function KindleAIDictionary:collectPriorMentionsThenExplain(snapshot)
-    local function request_explanation()
+    self:collectPriorMentions(snapshot, function()
         NetworkMgr:runWhenOnline(function()
             self:requestExplanation(snapshot)
         end)
-    end
+    end)
+end
 
+function KindleAIDictionary:collectPriorMentions(snapshot, on_complete)
     if not Context.shouldCollectPriorMentions(self, snapshot) then
-        request_explanation()
+        on_complete()
         return
     end
 
@@ -75,7 +89,21 @@ function KindleAIDictionary:collectPriorMentionsThenExplain(snapshot)
     if completed and type(mentions) == "table" then
         snapshot.prior_mentions = mentions
     end
-    request_explanation()
+    on_complete()
+end
+
+function KindleAIDictionary:inspectCapturedContext(highlight, fallback_text)
+    local snapshot, capture_error = Context.capture(self, highlight, fallback_text)
+    if not snapshot then
+        UIManager:show(InfoMessage:new {
+            text = _(capture_error),
+        })
+        return
+    end
+
+    self:collectPriorMentions(snapshot, function()
+        ExplanationViewer.showRequestInspection(Contract.encodeRequest(snapshot))
+    end)
 end
 
 function KindleAIDictionary:requestExplanation(snapshot)
