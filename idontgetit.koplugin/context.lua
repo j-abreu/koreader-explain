@@ -63,7 +63,7 @@ local function selected_term_count(selected_text)
     local count = 0
     for _ in selected_text:gmatch("%S+") do
         count = count + 1
-        if count > 2 then
+        if count > 3 then
             return count
         end
     end
@@ -103,7 +103,7 @@ function Context.shouldCollectPriorMentions(plugin, snapshot)
         and type(document.findAllText) == "function"
         and type(document.compareXPointers) == "function"
         and snapshot.selection_start
-        and selected_term_count(snapshot.selected_text) <= 2
+        and selected_term_count(snapshot.selected_text) <= 3
 end
 
 function Context.collectPriorMentions(plugin, snapshot)
