@@ -2,7 +2,7 @@ local JSON = require("json")
 
 local Contract = {}
 
-local CONTRACT_VERSION = 1
+local CONTRACT_VERSION = 2
 
 local function non_empty_string(value, maximum)
     return type(value) == "string" and #value > 0 and #value <= maximum
@@ -28,34 +28,22 @@ local function exact_keys(value, expected)
     return count == expected_count
 end
 
-local function containing_block(snapshot)
-    local parts = {}
-    if snapshot.before ~= "" then
-        parts[#parts + 1] = snapshot.before
+local function selection_kind(selected_text)
+    local words = 0
+    for _ in selected_text:gmatch("%S+") do
+        words = words + 1
+        if words > 12 then
+            return "passage"
+        end
     end
-    parts[#parts + 1] = snapshot.selected_text
-    if snapshot.after ~= "" then
-        parts[#parts + 1] = snapshot.after
+
+    if words <= 1 then
+        return "word"
     end
-    return table.concat(parts, " ")
+    return "phrase"
 end
 
 function Contract.buildRequest(snapshot)
-    local block = containing_block(snapshot)
-    local context = {
-        immediate = block,
-        containingBlock = block,
-    }
-    if snapshot.before ~= "" then
-        context.before = snapshot.before
-    end
-    if snapshot.after ~= "" then
-        context.after = snapshot.after
-    end
-    if snapshot.chapter ~= "" then
-        context.heading = snapshot.chapter
-    end
-
     local book = {
         title = snapshot.title,
     }
@@ -66,13 +54,24 @@ function Contract.buildRequest(snapshot)
         book.language = snapshot.language
     end
 
+    local reading = {
+        surroundingText = {
+            before = snapshot.before,
+            after = snapshot.after,
+        },
+    }
+    if snapshot.chapter ~= "" then
+        reading.chapter = { title = snapshot.chapter }
+    end
+
     return {
         version = CONTRACT_VERSION,
         selection = {
-            selectedText = snapshot.selected_text,
-            context = context,
+            text = snapshot.selected_text,
+            kind = selection_kind(snapshot.selected_text),
         },
         book = book,
+        reading = reading,
         preferences = {
             level = "simple",
         },

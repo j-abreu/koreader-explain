@@ -6,7 +6,7 @@ The first vertical slice captures selected text and bounded ebook context, calls
 
 ## Status
 
-The first live device slice is scaffolded. It adds **Explain in context** to KOReader's selection menu and **Explain** to the native dictionary popup, captures bounded ebook context plus available book and chapter metadata, calls the Context Explain API in a background subprocess, validates its version 1 book response, and displays the structured explanation in a native viewer.
+The first live device slice is scaffolded. It adds **Explain in context** to KOReader's selection menu and **Explain** to the native dictionary popup, captures bounded ebook context plus available book and chapter metadata, calls the source-bound version 2 Context Explain API in a background subprocess, validates its response, and displays the structured explanation in a native viewer.
 
 The explanation viewer provides **Retry** to resubmit the exact captured snapshot and **Close** to return to the book.
 

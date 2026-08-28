@@ -5,7 +5,7 @@ local UIManager = require("ui/uimanager")
 
 local ApiClient = {}
 
-local ENDPOINT = "https://context-explain-api.jere-lab.workers.dev/v1/explain/book"
+local ENDPOINT = "https://context-explain-api.jere-lab.workers.dev/v2/explain/book"
 local POLL_SECONDS = 0.1
 
 local function read_available(fd)
