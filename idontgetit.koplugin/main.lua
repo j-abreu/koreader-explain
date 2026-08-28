@@ -28,7 +28,7 @@ function KindleAIDictionary:init()
         self.ui.dictionary:addToDictButtons {
             id = "idontgetit_explain",
             menu_text = _("Explain in context"),
-            text = _("Explain"),
+            text = _("Explain in context"),
             insert_first = true,
             callback = function(dict_popup)
                 self:showCapturedContext(dict_popup.highlight, dict_popup.word)
