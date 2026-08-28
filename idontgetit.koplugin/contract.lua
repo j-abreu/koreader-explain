@@ -63,6 +63,13 @@ function Contract.buildRequest(snapshot)
     if snapshot.chapter ~= "" then
         reading.chapter = { title = snapshot.chapter }
     end
+    if snapshot.prior_mentions and #snapshot.prior_mentions > 0 then
+        local prior_mentions = {}
+        for _, mention in ipairs(snapshot.prior_mentions) do
+            prior_mentions[#prior_mentions + 1] = { text = mention }
+        end
+        reading.priorMentions = prior_mentions
+    end
 
     return {
         version = CONTRACT_VERSION,

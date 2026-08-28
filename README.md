@@ -10,7 +10,7 @@ The first live device slice is scaffolded. It adds **Explain in context** to KOR
 
 The explanation viewer provides **Retry** to resubmit the exact captured snapshot and **Close** to return to the book.
 
-The initial context window captures up to 50 words on each side of the selection. The nearest 450 Unicode characters from each side are retained so the request remains within the API's field limits.
+The initial context window captures up to 50 words on each side of the selection. The nearest 450 Unicode characters from each side are retained so the request remains within the API's field limits. For one- and two-word selections in reflowable books, it also searches locally for up to five earlier occurrences and sends a 280-character excerpt for each match. PDF and other unsupported formats continue with immediate context only.
 
 ## Source layout
 

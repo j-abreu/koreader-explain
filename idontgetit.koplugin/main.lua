@@ -6,6 +6,7 @@ local ExplanationViewer = require("explanation_viewer")
 local InfoMessage = require("ui/widget/infomessage")
 local InputContainer = require("ui/widget/container/inputcontainer")
 local NetworkMgr = require("ui/network/manager")
+local Trapper = require("ui/trapper")
 local UIManager = require("ui/uimanager")
 local _ = require("gettext")
 
@@ -46,9 +47,35 @@ function KindleAIDictionary:showCapturedContext(highlight, fallback_text)
         return
     end
 
-    NetworkMgr:runWhenOnline(function()
-        self:requestExplanation(snapshot)
-    end)
+    self:collectPriorMentionsThenExplain(snapshot)
+end
+
+function KindleAIDictionary:collectPriorMentionsThenExplain(snapshot)
+    local function request_explanation()
+        NetworkMgr:runWhenOnline(function()
+            self:requestExplanation(snapshot)
+        end)
+    end
+
+    if not Context.shouldCollectPriorMentions(self, snapshot) then
+        request_explanation()
+        return
+    end
+
+    local info = InfoMessage:new {
+        text = _("Finding earlier mentions… (tap to cancel)"),
+    }
+    UIManager:show(info)
+    UIManager:forceRePaint()
+    local completed, mentions = Trapper:dismissableRunInSubprocess(function()
+        return Context.collectPriorMentions(self, snapshot)
+    end, info)
+    UIManager:close(info)
+
+    if completed and type(mentions) == "table" then
+        snapshot.prior_mentions = mentions
+    end
+    request_explanation()
 end
 
 function KindleAIDictionary:requestExplanation(snapshot)

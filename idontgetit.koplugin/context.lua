@@ -5,6 +5,9 @@ local Context = {}
 local SURROUNDING_WORDS = 50
 local MAX_SELECTION_CHARACTERS = 1000
 local MAX_SURROUNDING_CHARACTERS = 450
+local MAX_PRIOR_MENTIONS = 5
+local MAX_PRIOR_MENTION_CHARACTERS = 280
+local PRIOR_MENTION_CONTEXT_WORDS = 20
 
 local function clean(value)
     if value == nil then
@@ -56,6 +59,87 @@ local function current_chapter(plugin, selected)
     return ""
 end
 
+local function selected_term_count(selected_text)
+    local count = 0
+    for _ in selected_text:gmatch("%S+") do
+        count = count + 1
+        if count > 2 then
+            return count
+        end
+    end
+    return count
+end
+
+local function make_prior_mention(previous, matched, following)
+    previous = clean(previous)
+    matched = clean(matched)
+    following = clean(following)
+
+    if matched == "" then
+        return ""
+    end
+
+    local matched_length = #util.splitToChars(matched)
+    if matched_length >= MAX_PRIOR_MENTION_CHARACTERS then
+        return truncate_characters(matched, MAX_PRIOR_MENTION_CHARACTERS, false)
+    end
+
+    local remaining = MAX_PRIOR_MENTION_CHARACTERS - matched_length
+    local before_length = math.min(#util.splitToChars(previous), math.floor(remaining / 2))
+    local after_length = math.min(#util.splitToChars(following), remaining - before_length)
+    before_length = math.min(#util.splitToChars(previous), remaining - after_length)
+
+    local before = truncate_characters(previous, before_length, true)
+    local after = truncate_characters(following, after_length, false)
+    return clean(table.concat({ before, matched, after }, " "))
+end
+
+function Context.shouldCollectPriorMentions(plugin, snapshot)
+    local document = plugin and plugin.ui and plugin.ui.document
+    return document
+        and document.is_reflowable
+        and type(document.findAllText) == "function"
+        and type(document.compareXPointers) == "function"
+        and snapshot.selection_start
+        and selected_term_count(snapshot.selected_text) <= 2
+end
+
+function Context.collectPriorMentions(plugin, snapshot)
+    if not Context.shouldCollectPriorMentions(plugin, snapshot) then
+        return {}
+    end
+
+    local document = plugin.ui.document
+    local ok, results = pcall(function()
+        -- The current selection can be one of the first hits, so request one extra.
+        return document:findAllText(snapshot.selected_text, true, PRIOR_MENTION_CONTEXT_WORDS, MAX_PRIOR_MENTIONS + 1, false)
+    end)
+    if not ok or type(results) ~= "table" then
+        return {}
+    end
+
+    local mentions = {}
+    for _, result in ipairs(results) do
+        local is_before = result["end"] and document:compareXPointers(result["end"], snapshot.selection_start) == 1
+        if is_before then
+            local matched = table.concat({
+                result.matched_word_prefix or "",
+                result.matched_text or "",
+                result.matched_word_suffix or "",
+            })
+            local excerpt = make_prior_mention(result.prev_text, matched, result.next_text)
+            if excerpt ~= "" then
+                mentions[#mentions + 1] = excerpt
+                if #mentions == MAX_PRIOR_MENTIONS then
+                    break
+                end
+            end
+        end
+    end
+
+    return mentions
+end
+
 function Context.capture(plugin, highlight, fallback_text)
     local selected = highlight and highlight.selected_text
     local selected_text = clean((selected and selected.text) or fallback_text)
@@ -103,6 +187,7 @@ function Context.capture(plugin, highlight, fallback_text)
         authors = clean(authors),
         language = truncate_characters(clean(props.language), 100, false),
         chapter = truncate_characters(current_chapter(plugin, selected), 500, false),
+        selection_start = selected and selected.pos0 or nil,
     }
 end
 
@@ -136,6 +221,9 @@ function Context.formatForInspection(snapshot)
     }
     if #metadata > 0 then
         sections[#sections + 1] = "Document metadata\n" .. table.concat(metadata, "\n")
+    end
+    if snapshot.prior_mentions and #snapshot.prior_mentions > 0 then
+        sections[#sections + 1] = "Earlier mentions\n" .. table.concat(snapshot.prior_mentions, "\n\n")
     end
 
     return table.concat(sections, "\n\n")
