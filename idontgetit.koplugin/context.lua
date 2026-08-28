@@ -97,7 +97,9 @@ end
 function Context.shouldCollectPriorMentions(plugin, snapshot)
     local document = plugin and plugin.ui and plugin.ui.document
     return document
-        and document.is_reflowable
+        -- CREngine backs EPUB and similar reflowable ebooks. Its XPointer API is
+        -- required to ensure every excerpt is strictly earlier than the selection.
+        and document.provider == "crengine"
         and type(document.findAllText) == "function"
         and type(document.compareXPointers) == "function"
         and snapshot.selection_start
