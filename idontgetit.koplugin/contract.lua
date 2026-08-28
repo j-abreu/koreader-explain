@@ -80,7 +80,7 @@ function Contract.buildRequest(snapshot)
         book = book,
         reading = reading,
         preferences = {
-            level = "simple",
+            level = "beginner",
         },
     }
 end
