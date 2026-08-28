@@ -6,12 +6,11 @@ local ExplanationViewer = {}
 
 function ExplanationViewer.show(explanation, retry_callback)
     local sections = {
-        _("Definition") .. "\n" .. explanation.definition,
-        _("In this context") .. "\n" .. explanation.contextualMeaning,
+        explanation.explanation,
     }
 
-    if #explanation.synonyms > 0 then
-        sections[#sections + 1] = _("Synonyms") .. "\n" .. table.concat(explanation.synonyms, ", ")
+    if #explanation.relatedTerms > 0 then
+        sections[#sections + 1] = _("Related terms") .. "\n" .. table.concat(explanation.relatedTerms, ", ")
     end
 
     local viewer

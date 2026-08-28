@@ -2,15 +2,15 @@
 
 A context-aware dictionary and explanation plugin for jailbroken Kindles running KOReader.
 
-The first vertical slice will capture selected text and bounded ebook context, call the existing `i-dont-get-it` Cloudflare Worker, and display its structured explanation in a native KOReader interface.
+The first vertical slice captures selected text and bounded ebook context, calls the shared Context Explain API's book endpoint, and displays its structured explanation in a native KOReader interface.
 
 ## Status
 
-The first live device slice is scaffolded. It adds **Explain in context** to KOReader's selection menu and **Explain** to the native dictionary popup, captures bounded ebook context plus available book and chapter metadata, calls the existing Cloudflare Worker in a background subprocess, validates its version 2 response, and displays the structured explanation in a native viewer.
+The first live device slice is scaffolded. It adds **Explain in context** to KOReader's selection menu and **Explain** to the native dictionary popup, captures bounded ebook context plus available book and chapter metadata, calls the Context Explain API in a background subprocess, validates its version 1 book response, and displays the structured explanation in a native viewer.
 
 The explanation viewer provides **Retry** to resubmit the exact captured snapshot and **Close** to return to the book.
 
-The initial context window captures up to 50 words on each side of the selection. The nearest 450 Unicode characters from each side are retained so the request remains within the current Worker's version 2 field limits.
+The initial context window captures up to 50 words on each side of the selection. The nearest 450 Unicode characters from each side are retained so the request remains within the API's field limits.
 
 ## Source layout
 

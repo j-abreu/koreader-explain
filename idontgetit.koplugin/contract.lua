@@ -2,7 +2,7 @@ local JSON = require("json")
 
 local Contract = {}
 
-local CONTRACT_VERSION = 2
+local CONTRACT_VERSION = 1
 
 local function non_empty_string(value, maximum)
     return type(value) == "string" and #value > 0 and #value <= maximum
@@ -41,8 +41,10 @@ local function containing_block(snapshot)
 end
 
 function Contract.buildRequest(snapshot)
+    local block = containing_block(snapshot)
     local context = {
-        containingBlock = containing_block(snapshot),
+        immediate = block,
+        containingBlock = block,
     }
     if snapshot.before ~= "" then
         context.before = snapshot.before
@@ -54,13 +56,14 @@ function Contract.buildRequest(snapshot)
         context.heading = snapshot.chapter
     end
 
-    local page = {
+    local book = {
         title = snapshot.title,
-        url = "",
-        hostname = "",
     }
+    if snapshot.authors ~= "" then
+        book.author = snapshot.authors
+    end
     if snapshot.language ~= "" then
-        page.language = snapshot.language
+        book.language = snapshot.language
     end
 
     return {
@@ -68,8 +71,8 @@ function Contract.buildRequest(snapshot)
         selection = {
             selectedText = snapshot.selected_text,
             context = context,
-            page = page,
         },
+        book = book,
         preferences = {
             level = "simple",
         },
@@ -82,22 +85,20 @@ end
 
 local function validate_explanation(explanation)
     if not exact_keys(explanation, {
-        definition = true,
-        contextualMeaning = true,
-        synonyms = true,
+        explanation = true,
+        relatedTerms = true,
     }) then
         return false
     end
 
-    if not non_empty_string(explanation.definition, 1500)
-        or not non_empty_string(explanation.contextualMeaning, 4000)
-        or type(explanation.synonyms) ~= "table"
-        or #explanation.synonyms > 5 then
+    if not non_empty_string(explanation.explanation, 4000)
+        or type(explanation.relatedTerms) ~= "table"
+        or #explanation.relatedTerms > 5 then
         return false
     end
 
-    for _, synonym in ipairs(explanation.synonyms) do
-        if not non_empty_string(synonym, 200) then
+    for _, term in ipairs(explanation.relatedTerms) do
+        if not non_empty_string(term, 200) then
             return false
         end
     end
