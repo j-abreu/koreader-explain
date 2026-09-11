@@ -62,6 +62,15 @@ function KindleAIDictionary:init()
                 self:inspectCapturedContext(dict_popup.highlight, dict_popup.word)
             end,
         }
+        self.ui.dictionary:addToDictButtons {
+            id = "idontgetit_search_probe",
+            menu_text = _("Probe local search"),
+            text = _("Probe local search"),
+            insert_first = true,
+            callback = function(dict_popup)
+                self:probeLocalSearch(dict_popup.highlight, dict_popup.word)
+            end,
+        }
     end
 end
 
