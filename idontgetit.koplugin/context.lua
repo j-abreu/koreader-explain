@@ -252,7 +252,9 @@ function Context.probeLocalSearch(plugin, snapshot)
         return { supported = false, reason = "The document search call failed." }
     end
     local samples, before_count, after_or_overlap_count = {}, 0, 0
+    local inspected = math.min(#results, Limits.CANDIDATE_HITS)
     for index, result in ipairs(results) do
+        if index > inspected then break end
         local before = result["end"] and document:compareXPointers(result["end"], snapshot.selection_start) == 1
         if before then before_count = before_count + 1 else after_or_overlap_count = after_or_overlap_count + 1 end
         if #samples < 3 then
@@ -270,7 +272,9 @@ function Context.probeLocalSearch(plugin, snapshot)
         supported = true,
         query = snapshot.selected_text,
         result_count = #results,
-        cap_reached = #results >= Limits.CANDIDATE_HITS,
+        api_result_count = #results,
+        inspected_count = inspected,
+        cap_reached = #results > Limits.CANDIDATE_HITS,
         before_count = before_count,
         after_or_overlap_count = after_or_overlap_count,
         samples = samples,
@@ -330,7 +334,7 @@ function Context.formatLocalSearchProbe(probe)
     local sections = {
         "Local search probe",
         "Query\n" .. probe.query,
-        string.format("Results\n%d returned; %d-candidate cap reached: %s\nStrictly before selection: %d\nAt/after or overlapping: %d", probe.result_count, Limits.CANDIDATE_HITS, probe.cap_reached and "yes" or "no", probe.before_count, probe.after_or_overlap_count),
+        string.format("Results\n%d API results; %d inspected; %d-candidate cap reached: %s\nStrictly before selection: %d\nAt/after or overlapping: %d", probe.api_result_count, probe.inspected_count, Limits.CANDIDATE_HITS, probe.cap_reached and "yes" or "no", probe.before_count, probe.after_or_overlap_count),
     }
     for index, sample in ipairs(probe.samples) do
         sections[#sections + 1] = string.format("Sample %d — %s\nPosition fields: start=%s, end=%s\n%s", index, sample.relation, sample.has_start and "yes" or "no", sample.has_end and "yes" or "no", sample.excerpt)
