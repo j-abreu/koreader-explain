@@ -4,7 +4,7 @@ local Text = require("text")
 
 local Contract = {}
 
-local CONTRACT_VERSION = 2
+local CONTRACT_VERSION = 3
 
 local function non_empty_string(value, maximum)
     local length = Text.count(value)
@@ -14,6 +14,17 @@ end
 local function bounded_string(value, maximum)
     local length = Text.count(value)
     return length and length <= maximum
+end
+
+local function word_count(value)
+    local count = 0
+    for _ in value:gmatch("%S+") do count = count + 1 end
+    return count
+end
+
+local function valid_context_side(immediate, adjacent)
+    return word_count(immediate) + word_count(adjacent) <= Limits.CONTEXT_WORDS_MAX
+        and (Text.count(immediate) or math.huge) + (Text.count(adjacent) or math.huge) <= Limits.CONTEXT_SCALARS_PER_SIDE
 end
 
 local function exact_keys(value, expected)
@@ -42,7 +53,13 @@ function Contract.buildRequest(snapshot)
     if snapshot.authors ~= "" then book.author = snapshot.authors end
     if snapshot.language ~= "" then book.language = snapshot.language end
     if snapshot.format ~= "" then book.format = snapshot.format end
-    local reading = { surroundingText = { before = snapshot.before, after = snapshot.after } }
+    local reading = {
+        context = {
+            strategy = snapshot.context_strategy,
+            immediateText = { before = snapshot.immediate_before, after = snapshot.immediate_after },
+            adjacentText = { before = snapshot.adjacent_before, after = snapshot.adjacent_after },
+        },
+    }
     if snapshot.chapter ~= "" then reading.chapter = { title = snapshot.chapter } end
     if snapshot.prior_mentions and #snapshot.prior_mentions > 0 then
         local prior_mentions = {}
@@ -58,10 +75,15 @@ end
 
 function Contract.encodeRequest(snapshot)
     if type(snapshot) ~= "table" or not bounded_string(snapshot.selected_text, Limits.PRODUCT_SELECTED_TEXT)
-        or not bounded_string(snapshot.title, Limits.BOOK_TITLE) or not bounded_string(snapshot.before, Limits.SURROUNDING_TEXT)
-        or not bounded_string(snapshot.after, Limits.SURROUNDING_TEXT) or not bounded_string(snapshot.authors, Limits.BOOK_AUTHOR)
+        or not bounded_string(snapshot.title, Limits.BOOK_TITLE) or not bounded_string(snapshot.immediate_before, Limits.CONTEXT_FIELD_SCALARS)
+        or not bounded_string(snapshot.immediate_after, Limits.CONTEXT_FIELD_SCALARS) or not bounded_string(snapshot.adjacent_before, Limits.CONTEXT_FIELD_SCALARS)
+        or not bounded_string(snapshot.adjacent_after, Limits.CONTEXT_FIELD_SCALARS) or not bounded_string(snapshot.authors, Limits.BOOK_AUTHOR)
         or not bounded_string(snapshot.language, Limits.BOOK_LANGUAGE) or not bounded_string(snapshot.format, Limits.BOOK_FORMAT)
-        or not bounded_string(snapshot.chapter, Limits.CHAPTER_TITLE) then
+        or not bounded_string(snapshot.chapter, Limits.CHAPTER_TITLE)
+        or (snapshot.context_strategy ~= "sentence" and snapshot.context_strategy ~= "sentence_clipped" and snapshot.context_strategy ~= "word_window")
+        or not valid_context_side(snapshot.immediate_before, snapshot.adjacent_before)
+        or not valid_context_side(snapshot.immediate_after, snapshot.adjacent_after)
+        then
         return nil, "invalid_local_request"
     end
     local ok, encoded = pcall(JSON.encode, Contract.buildRequest(snapshot))

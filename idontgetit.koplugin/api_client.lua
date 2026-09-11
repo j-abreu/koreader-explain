@@ -6,7 +6,7 @@ local Limits = require("limits")
 
 local ApiClient = {}
 
-local ENDPOINT = "https://context-explain-api.jere-lab.workers.dev/v2/explain/book"
+local ENDPOINT = "https://context-explain-api.jere-lab.workers.dev/v3/explain/book"
 local POLL_SECONDS = 0.1
 local MAX_RESPONSE_BODY = Limits.RESPONSE_BODY_BYTES
 local MAX_BACKGROUND_RESULT = 24 * 1024

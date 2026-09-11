@@ -2,10 +2,10 @@ local root = (... and ... ~= "" and ...) or "."
 package.path = root .. "/idontgetit.koplugin/?.lua;" .. package.path
 
 local fixtures = {
-    success = { version = 2, requestId = "request-1", explanation = { explanation = "A valid explanation.", relatedTerms = {} } },
-    service_error = { version = 2, requestId = "request-2", error = { code = "service_unavailable", message = "Untrusted text", retryable = true } },
-    timeout_error = { version = 2, requestId = "request-3", error = { code = "timeout", message = "Untrusted text", retryable = true } },
-    invalid_schema = { version = 2, requestId = "request-4", explanation = { explanation = "", relatedTerms = {} } },
+    success = { version = 3, requestId = "request-1", explanation = { explanation = "A valid explanation.", relatedTerms = {} } },
+    service_error = { version = 3, requestId = "request-2", error = { code = "service_unavailable", message = "Untrusted text", retryable = true } },
+    timeout_error = { version = 3, requestId = "request-3", error = { code = "timeout", message = "Untrusted text", retryable = true } },
+    invalid_schema = { version = 3, requestId = "request-4", explanation = { explanation = "", relatedTerms = {} } },
 }
 package.preload.json = function()
     return {
@@ -24,10 +24,12 @@ package.preload.util = function()
             for character in value:gmatch("[%z\1-\127\194-\244][\128-\191]*") do characters[#characters + 1] = character end
             return characters
         end,
+        cleanupSelectedText = function(value) return value:gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", "") end,
     }
 end
 
 local Contract = require("contract")
+local Context = require("context")
 local Lifecycle = require("lifecycle")
 local cleanup = { close = 0, terminate = 0, prevent = 0, allow = 0, unschedule = 0 }
 local ffi_stub = { C = { close = function() cleanup.close = cleanup.close + 1 end } }
@@ -69,6 +71,10 @@ assert_equal(result("http_response", 400, "malformed").retryable, false, "4xx re
 assert_equal(ApiClient.parseRetryAfter { ["retry-after"] = "0.5" }, 1, "small retry-after clamp")
 assert_equal(ApiClient.parseRetryAfter { ["Retry-After"] = "7200" }, 3600, "large retry-after clamp")
 assert_equal(ApiClient.parseRetryAfter { ["retry-after"] = "Wed, 21 Oct" }, nil, "retry-after date is ignored")
+assert_equal(Context.wordCount("one\ttwo  three"), 3, "portable word count")
+assert_equal(Context.trimNearest("one two three four", 2, 100, true), "three four", "before keeps nearest words")
+assert_equal(Context.trimNearest("one two three four", 2, 100, false), "one two", "after keeps nearest words")
+assert_equal(Context.trimNearest("😀 😀 😀", 3, 2, true), "😀 😀", "scalar cap keeps nearest words")
 local cancel = ApiClient.explain("request", function() error("cancelled requests must not complete") end)
 cancel()
 cancel()
