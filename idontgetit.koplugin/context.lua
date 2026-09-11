@@ -230,10 +230,19 @@ end
 -- same inherited subprocess route as production retrieval will use: opening a
 -- CREngine document from a standalone LuaJIT process is not safe on Kindle.
 function Context.probeLocalSearch(plugin, snapshot)
-    if not Context.shouldCollectPriorMentions(plugin, snapshot) then
-        return { supported = false, reason = "This document does not expose the required CREngine position APIs." }
+    local document = plugin and plugin.ui and plugin.ui.document
+    if not document or document.provider ~= "crengine" then
+        return { supported = false, reason = "This document is not backed by CREngine." }
     end
-    local document = plugin.ui.document
+    if type(document.findAllText) ~= "function" or type(document.compareXPointers) ~= "function" then
+        return { supported = false, reason = "This document does not expose the required CREngine search and position APIs." }
+    end
+    if not snapshot.selection_start then
+        return { supported = false, reason = "KOReader did not provide the selected text position." }
+    end
+    if selected_term_count(snapshot.selected_text) > Limits.QUERY_WORDS or (Text.count(snapshot.selected_text) or math.huge) > Limits.QUERY_SCALARS then
+        return { supported = false, reason = "The selected phrase exceeds the local-search query limits." }
+    end
     local ok, results = pcall(function()
         return document:findAllText(snapshot.selected_text, true, PRIOR_MENTION_CONTEXT_WORDS, 50, false)
     end)
