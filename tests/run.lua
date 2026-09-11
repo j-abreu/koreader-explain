@@ -104,6 +104,11 @@ assert_equal(lifecycle:finish(first, "cancelled"), true, "cancellation finishes 
 assert_equal(lifecycle:finish(first, "completed"), false, "stale callback is ignored")
 local second = lifecycle:start { selected_text = "second" }
 assert_equal(second.id, first.id + 1, "invocation IDs increase")
+assert_equal(lifecycle:beginModelCall(second, "initial_request"), true, "initial model call begins")
+assert_equal(lifecycle:beginRetrieval(second), true, "one retrieval round begins")
+assert_equal(lifecycle:beginModelCall(second, "completion_request"), true, "completion model call begins")
+assert_equal(lifecycle:beginModelCall(second, "completion_request"), false, "third model call is blocked")
+assert_equal(lifecycle:beginRetrieval(second), false, "second retrieval round is blocked")
 assert_equal(lifecycle:finish(second, "completed"), true, "completion clears active invocation")
 
 print("koreader-explain tests passed")
