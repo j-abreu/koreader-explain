@@ -36,6 +36,7 @@ local Lifecycle = require("lifecycle")
 local RetrievalPolicy = require("retrieval_policy")
 local SearchPlan = require("search_plan")
 local ContractV4 = require("contract_v4")
+local BookSearch = require("book_search")
 local cleanup = { close = 0, terminate = 0, prevent = 0, allow = 0, unschedule = 0 }
 local ffi_stub = { C = { close = function() cleanup.close = cleanup.close + 1 end } }
 local ffi_util_stub = {
@@ -87,6 +88,24 @@ assert_equal(normalized_plan.queries[1].policyScope, "before_selection", "plan s
 assert_equal(SearchPlan.normalize({ bookMode = "reference", classificationBasis = "Reference.", queries = { { text = "same", requestedScope = "before_selection" }, { text = " SAME ", requestedScope = "before_selection" } } }), nil, "duplicate plan queries are rejected")
 assert_equal(ContractV4.parseInitialResult { kind = "http_response", status = 200, body = "v4_answer" }.kind, "answer", "v4 answer response")
 assert_equal(ContractV4.parseInitialResult { kind = "http_response", status = 200, body = "v4_search" }.plan.queries[1].policyScope, "before_selection", "v4 search plan response")
+local fake_document = {
+    provider = "crengine",
+    compareXPointers = function(_, first, second) return second > first and 1 or (second < first and -1 or 0) end,
+    findAllText = function()
+        return {
+            { start = 1, ["end"] = 5, matched_text = "Alice", prev_text = "front" },
+            { start = 20, ["end"] = 25, matched_text = "Alice", prev_text = "first" },
+            { start = 30, ["end"] = 35, matched_text = "Alice", prev_text = "second" },
+            { start = 40, ["end"] = 45, matched_text = "Alice", prev_text = "third" },
+            { start = 120, ["end"] = 125, matched_text = "Alice", prev_text = "later" },
+        }
+    end,
+}
+local fake_plugin = { ui = { document = fake_document, toc = { toc = { { xpointer = 10 } } } } }
+local fake_searches = assert(BookSearch.execute(fake_plugin, { selection_start = 100, selection_end = 101 }, normalized_plan, {}))
+assert_equal(fake_searches[1].candidateCount, 5, "search candidate count")
+assert_equal(#fake_searches[1].matches, 3, "search returns bounded prior excerpts")
+assert_equal(fake_searches[1].matches[1].text:find("front", 1, true), nil, "front matter is excluded")
 local cancel = ApiClient.explain("request", function() error("cancelled requests must not complete") end)
 cancel()
 cancel()
