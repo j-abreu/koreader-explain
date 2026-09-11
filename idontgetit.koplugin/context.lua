@@ -190,6 +190,31 @@ function Context.shouldCollectPriorMentions(plugin, snapshot)
         and selected_term_count(snapshot.selected_text) <= 3
 end
 
+-- EPUB title pages, licensing notices, and other front matter often precede the
+-- first navigable TOC entry. When that entry has a verified XPointer before the
+-- selection, use it as a conservative content boundary. No page/progress
+-- approximation is used when a TOC boundary is unavailable.
+function Context.getReadingContentBoundary(plugin, snapshot)
+    local document = plugin and plugin.ui and plugin.ui.document
+    local toc = plugin and plugin.ui and plugin.ui.toc
+    if not document or not toc or not snapshot.selection_start or type(document.compareXPointers) ~= "function" then return nil end
+    if type(toc.fillToc) == "function" then pcall(function() toc:fillToc() end) end
+    if type(toc.toc) ~= "table" then return nil end
+    for _, item in ipairs(toc.toc) do
+        if item.xpointer and document:compareXPointers(item.xpointer, snapshot.selection_start) == 1 then
+            return item.xpointer
+        end
+    end
+    return nil
+end
+
+local function is_at_or_after_content_boundary(document, result, boundary)
+    if not boundary then return true end
+    if not result["end"] then return false end
+    local comparison = document:compareXPointers(result["end"], boundary)
+    return comparison ~= nil and comparison ~= 1
+end
+
 function Context.collectPriorMentions(plugin, snapshot)
     if not Context.shouldCollectPriorMentions(plugin, snapshot) then
         return {}
@@ -205,9 +230,10 @@ function Context.collectPriorMentions(plugin, snapshot)
     end
 
     local mentions = {}
+    local boundary = Context.getReadingContentBoundary(plugin, snapshot)
     for _, result in ipairs(results) do
         local is_before = result["end"] and document:compareXPointers(result["end"], snapshot.selection_start) == 1
-        if is_before then
+        if is_before and is_at_or_after_content_boundary(document, result, boundary) then
             local matched = table.concat({
                 result.matched_word_prefix or "",
                 result.matched_text or "",
@@ -251,17 +277,25 @@ function Context.probeLocalSearch(plugin, snapshot)
     if not ok or type(results) ~= "table" then
         return { supported = false, reason = "The document search call failed." }
     end
-    local samples, before_count, after_or_overlap_count = {}, 0, 0
+    local samples, before_count, after_or_overlap_count, front_matter_excluded = {}, 0, 0, 0
+    local boundary = Context.getReadingContentBoundary(plugin, snapshot)
     local inspected = math.min(#results, Limits.CANDIDATE_HITS)
     for index, result in ipairs(results) do
         if index > inspected then break end
         local before = result["end"] and document:compareXPointers(result["end"], snapshot.selection_start) == 1
-        if before then before_count = before_count + 1 else after_or_overlap_count = after_or_overlap_count + 1 end
+        local in_reading_content = is_at_or_after_content_boundary(document, result, boundary)
+        if before and not in_reading_content then
+            front_matter_excluded = front_matter_excluded + 1
+        elseif before then
+            before_count = before_count + 1
+        else
+            after_or_overlap_count = after_or_overlap_count + 1
+        end
         if #samples < 3 then
             local matched = clean(table.concat({ result.matched_word_prefix or "", result.matched_text or "", result.matched_word_suffix or "" }))
             local excerpt = make_prior_mention(result.prev_text, matched, result.next_text)
             samples[#samples + 1] = {
-                relation = before and "strictly before" or "at/after or overlapping",
+                relation = before and (in_reading_content and "strictly before" or "front matter (excluded)") or "at/after or overlapping",
                 excerpt = truncate_characters(excerpt, Limits.PRODUCT_PRIOR_MENTION, false),
                 has_start = result.start ~= nil,
                 has_end = result["end"] ~= nil,
@@ -275,6 +309,8 @@ function Context.probeLocalSearch(plugin, snapshot)
         api_result_count = #results,
         inspected_count = inspected,
         cap_reached = #results > Limits.CANDIDATE_HITS,
+        content_boundary_available = boundary ~= nil,
+        front_matter_excluded = front_matter_excluded,
         before_count = before_count,
         after_or_overlap_count = after_or_overlap_count,
         samples = samples,
@@ -334,7 +370,7 @@ function Context.formatLocalSearchProbe(probe)
     local sections = {
         "Local search probe",
         "Query\n" .. probe.query,
-        string.format("Results\n%d API results; %d inspected; %d-candidate cap reached: %s\nStrictly before selection: %d\nAt/after or overlapping: %d", probe.api_result_count, probe.inspected_count, Limits.CANDIDATE_HITS, probe.cap_reached and "yes" or "no", probe.before_count, probe.after_or_overlap_count),
+        string.format("Results\n%d API results; %d inspected; %d-candidate cap reached: %s\nContent boundary from TOC: %s\nFront matter excluded: %d\nStrictly before selection: %d\nAt/after or overlapping: %d", probe.api_result_count, probe.inspected_count, Limits.CANDIDATE_HITS, probe.cap_reached and "yes" or "no", probe.content_boundary_available and "yes" or "no", probe.front_matter_excluded, probe.before_count, probe.after_or_overlap_count),
     }
     for index, sample in ipairs(probe.samples) do
         sections[#sections + 1] = string.format("Sample %d — %s\nPosition fields: start=%s, end=%s\n%s", index, sample.relation, sample.has_start and "yes" or "no", sample.has_end and "yes" or "no", sample.excerpt)
