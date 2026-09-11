@@ -71,7 +71,9 @@ local function perform_request(endpoint, request_body)
     -- telemetry for diagnosing a device-side request failure.
     logger.info("Context Explain API response", endpoint, "status", status,
         "request bytes", #request_body, "response bytes", response_size)
-    return { kind = "http_response", status = status, body = table.concat(response_chunks), retry_after = seconds }
+    local body = table.concat(response_chunks)
+    if status >= 400 then logger.info("Context Explain API error metadata", body) end
+    return { kind = "http_response", status = status, body = body, retry_after = seconds }
 end
 
 function ApiClient.request(endpoint, request_body, on_complete)
