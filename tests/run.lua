@@ -31,6 +31,8 @@ end
 local Contract = require("contract")
 local Context = require("context")
 local Lifecycle = require("lifecycle")
+local RetrievalPolicy = require("retrieval_policy")
+local SearchPlan = require("search_plan")
 local cleanup = { close = 0, terminate = 0, prevent = 0, allow = 0, unschedule = 0 }
 local ffi_stub = { C = { close = function() cleanup.close = cleanup.close + 1 end } }
 local ffi_util_stub = {
@@ -75,6 +77,11 @@ assert_equal(Context.wordCount("one\ttwo  three"), 3, "portable word count")
 assert_equal(Context.trimNearest("one two three four", 2, 100, true), "three four", "before keeps nearest words")
 assert_equal(Context.trimNearest("one two three four", 2, 100, false), "one two", "after keeps nearest words")
 assert_equal(Context.trimNearest("😀 😀 😀", 3, 3, true), "😀 😀", "scalar cap keeps nearest words")
+assert_equal(select(1, RetrievalPolicy.clamp("narrative", "whole_book")), "before_selection", "narrative scope is clamped")
+assert_equal(select(2, RetrievalPolicy.clamp("uncertain", "whole_book")), "uncertain_guard", "uncertain scope records guard")
+local normalized_plan = SearchPlan.normalize({ bookMode = "narrative", classificationBasis = "Sequential fiction.", queries = { { text = " Mira key ", requestedScope = "whole_book" } } })
+assert_equal(normalized_plan.queries[1].policyScope, "before_selection", "plan scope is clamped")
+assert_equal(SearchPlan.normalize({ bookMode = "reference", classificationBasis = "Reference.", queries = { { text = "same", requestedScope = "before_selection" }, { text = " SAME ", requestedScope = "before_selection" } } }), nil, "duplicate plan queries are rejected")
 local cancel = ApiClient.explain("request", function() error("cancelled requests must not complete") end)
 cancel()
 cancel()
