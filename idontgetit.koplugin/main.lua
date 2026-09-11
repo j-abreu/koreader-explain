@@ -25,6 +25,7 @@ local KindleAIDictionary = InputContainer:extend {
 function KindleAIDictionary:init()
     self.lifecycle = Lifecycle.new()
     self.active_invocation = nil
+    self.ui.menu:registerToMainMenu(self)
     self.ui.highlight:addToHighlightDialog("idontgetit_explain", function(highlight)
         return {
             text = _("Explain in context"),
@@ -83,6 +84,7 @@ end
 function KindleAIDictionary:addToMainMenu(menu_items)
     menu_items.idontgetit_retrieval = {
         text = _("Explain in context"),
+        sorting_hint = "more_tools",
         sub_item_table = {
             {
                 text = _("Inspect last retrieval"),
