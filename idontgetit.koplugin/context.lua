@@ -226,6 +226,46 @@ function Context.collectPriorMentions(plugin, snapshot)
     return mentions
 end
 
+-- A temporary, read-only device capability probe. It deliberately uses the
+-- same inherited subprocess route as production retrieval will use: opening a
+-- CREngine document from a standalone LuaJIT process is not safe on Kindle.
+function Context.probeLocalSearch(plugin, snapshot)
+    if not Context.shouldCollectPriorMentions(plugin, snapshot) then
+        return { supported = false, reason = "This document does not expose the required CREngine position APIs." }
+    end
+    local document = plugin.ui.document
+    local ok, results = pcall(function()
+        return document:findAllText(snapshot.selected_text, true, PRIOR_MENTION_CONTEXT_WORDS, 50, false)
+    end)
+    if not ok or type(results) ~= "table" then
+        return { supported = false, reason = "The document search call failed." }
+    end
+    local samples, before_count, after_or_overlap_count = {}, 0, 0
+    for index, result in ipairs(results) do
+        local before = result["end"] and document:compareXPointers(result["end"], snapshot.selection_start) == 1
+        if before then before_count = before_count + 1 else after_or_overlap_count = after_or_overlap_count + 1 end
+        if #samples < 3 then
+            local matched = clean(table.concat({ result.matched_word_prefix or "", result.matched_text or "", result.matched_word_suffix or "" }))
+            local excerpt = make_prior_mention(result.prev_text, matched, result.next_text)
+            samples[#samples + 1] = {
+                relation = before and "strictly before" or "at/after or overlapping",
+                excerpt = truncate_characters(excerpt, Limits.PRODUCT_PRIOR_MENTION, false),
+                has_start = result.start ~= nil,
+                has_end = result["end"] ~= nil,
+            }
+        end
+    end
+    return {
+        supported = true,
+        query = snapshot.selected_text,
+        result_count = #results,
+        cap_reached = #results == 50,
+        before_count = before_count,
+        after_or_overlap_count = after_or_overlap_count,
+        samples = samples,
+    }
+end
+
 function Context.capture(plugin, highlight, fallback_text)
     local selected = highlight and highlight.selected_text
     local selected_text = clean((selected and selected.text) or fallback_text)
@@ -268,7 +308,23 @@ function Context.capture(plugin, highlight, fallback_text)
         format = Context.documentFormat(document),
         chapter = truncate_characters(current_chapter(plugin, selected), Limits.CHAPTER_TITLE, false),
         selection_start = selected and selected.pos0 or nil,
+        selection_end = selected and selected.pos1 or nil,
     }
+end
+
+function Context.formatLocalSearchProbe(probe)
+    if not probe or not probe.supported then
+        return "Local search probe\n\nUnsupported\n" .. ((probe and probe.reason) or "No result was returned.")
+    end
+    local sections = {
+        "Local search probe",
+        "Query\n" .. probe.query,
+        string.format("Results\n%d returned; 50-hit cap reached: %s\nStrictly before selection: %d\nAt/after or overlapping: %d", probe.result_count, probe.cap_reached and "yes" or "no", probe.before_count, probe.after_or_overlap_count),
+    }
+    for index, sample in ipairs(probe.samples) do
+        sections[#sections + 1] = string.format("Sample %d — %s\nPosition fields: start=%s, end=%s\n%s", index, sample.relation, sample.has_start and "yes" or "no", sample.has_end and "yes" or "no", sample.excerpt)
+    end
+    return table.concat(sections, "\n\n")
 end
 
 function Context.documentFormat(document)

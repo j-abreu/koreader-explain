@@ -35,6 +35,14 @@ function KindleAIDictionary:init()
             end,
         }
     end)
+    self.ui.highlight:addToHighlightDialog("idontgetit_search_probe", function(highlight)
+        return {
+            text = _("Probe local search"),
+            callback = function()
+                self:probeLocalSearch(highlight)
+            end,
+        }
+    end)
 
     if self.ui.dictionary then
         self.ui.dictionary:addToDictButtons {
@@ -55,6 +63,22 @@ function KindleAIDictionary:init()
             end,
         }
     end
+end
+
+function KindleAIDictionary:probeLocalSearch(highlight, fallback_text)
+    local snapshot, capture_error = Context.capture(self, highlight, fallback_text)
+    if not snapshot then
+        UIManager:show(InfoMessage:new { text = _(capture_error) })
+        return
+    end
+    local completed, probe = Trapper:dismissableRunInSubprocess(function()
+        return Context.probeLocalSearch(self, snapshot)
+    end, nil)
+    if not completed then
+        UIManager:show(InfoMessage:new { text = _("Local search probe was cancelled.") })
+        return
+    end
+    ExplanationViewer.showLocalSearchProbe(Context.formatLocalSearchProbe(probe))
 end
 
 function KindleAIDictionary:showCapturedContext(highlight, fallback_text)

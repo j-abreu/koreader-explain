@@ -59,4 +59,24 @@ function ExplanationViewer.showRequestInspection(request_json)
     UIManager:show(viewer)
 end
 
+function ExplanationViewer.showLocalSearchProbe(text)
+    local viewer
+    viewer = TextViewer:new {
+        title = _("Local search probe"),
+        text = text,
+        show_menu = false,
+        buttons_table = {
+            {
+                {
+                    text = _("Close"),
+                    callback = function()
+                        viewer:onClose()
+                    end,
+                },
+            },
+        },
+    }
+    UIManager:show(viewer)
+end
+
 return ExplanationViewer
