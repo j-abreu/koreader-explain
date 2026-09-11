@@ -74,7 +74,7 @@ assert_equal(ApiClient.parseRetryAfter { ["retry-after"] = "Wed, 21 Oct" }, nil,
 assert_equal(Context.wordCount("one\ttwo  three"), 3, "portable word count")
 assert_equal(Context.trimNearest("one two three four", 2, 100, true), "three four", "before keeps nearest words")
 assert_equal(Context.trimNearest("one two three four", 2, 100, false), "one two", "after keeps nearest words")
-assert_equal(Context.trimNearest("😀 😀 😀", 3, 2, true), "😀 😀", "scalar cap keeps nearest words")
+assert_equal(Context.trimNearest("😀 😀 😀", 3, 3, true), "😀 😀", "scalar cap keeps nearest words")
 local cancel = ApiClient.explain("request", function() error("cancelled requests must not complete") end)
 cancel()
 cancel()
