@@ -78,12 +78,18 @@ local function parse_transport(result)
     if result.kind == "transport_error" then return nil, error_result(result.code, true) end
     if result.kind == "client_error" then return nil, error_result(result.code, false) end
     if result.kind ~= "http_response" or type(result.status) ~= "number" or type(result.body) ~= "string" then return nil, error_result("invalid_response", false) end
+    local ok, response = pcall(JSON.decode, result.body)
     if result.status == 429 then return nil, error_result("rate_limited", true, result.retry_after) end
+    if ok and type(response) == "table" and response.version == VERSION and type(response.error) == "table"
+        and exact_keys(response.error, { code = true, message = true, retryable = true }) then
+        if response.error.code == "timeout" then return nil, error_result("timeout", true) end
+        if response.error.code == "service_unavailable" then return nil, error_result("service_unavailable", response.error.retryable, result.retry_after) end
+        if response.error.code == "invalid_request" then return nil, error_result("request_rejected", false) end
+        return nil, error_result("service_unavailable", response.error.retryable, result.retry_after)
+    end
     if result.status >= 500 then return nil, error_result("service_unavailable", true) end
     if result.status >= 400 then return nil, error_result("request_rejected", false) end
-    if result.status ~= 200 then return nil, error_result("invalid_response", false) end
-    local ok, response = pcall(JSON.decode, result.body)
-    if not ok or type(response) ~= "table" then return nil, error_result("invalid_response", false) end
+    if result.status ~= 200 or not ok or type(response) ~= "table" then return nil, error_result("invalid_response", false) end
     return response
 end
 

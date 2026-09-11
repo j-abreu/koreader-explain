@@ -1,15 +1,20 @@
 local ApiClient = require("api_client")
 local ConfirmBox = require("ui/widget/confirmbox")
 local Contract = require("contract")
+local ContractV4 = require("contract_v4")
 local Context = require("context")
 local ExplanationViewer = require("explanation_viewer")
 local InfoMessage = require("ui/widget/infomessage")
 local InputContainer = require("ui/widget/container/inputcontainer")
 local Lifecycle = require("lifecycle")
+local BookSearch = require("book_search")
 local NetworkMgr = require("ui/network/manager")
 local Trapper = require("ui/trapper")
 local UIManager = require("ui/uimanager")
 local _ = require("gettext")
+
+local V4_INITIAL_ENDPOINT = "https://context-explain-api.jere-lab.workers.dev/v4/explain/book"
+local V4_COMPLETION_ENDPOINT = "https://context-explain-api.jere-lab.workers.dev/v4/explain/book/complete"
 
 local KindleAIDictionary = InputContainer:extend {
     name = "idontgetit",
@@ -99,16 +104,7 @@ function KindleAIDictionary:showCapturedContext(highlight, fallback_text)
         return
     end
 
-    self:collectPriorMentions(snapshot, function()
-        local request_body, request_error = Contract.encodeRequest(snapshot)
-        if not request_body then
-            self:showLocalRequestError(request_error)
-            return
-        end
-        NetworkMgr:runWhenOnline(function()
-            self:requestExplanation(snapshot, request_body)
-        end)
-    end)
+    NetworkMgr:runWhenOnline(function() self:requestV4Initial(snapshot) end)
 end
 
 function KindleAIDictionary:collectPriorMentions(snapshot, on_complete)
@@ -138,9 +134,114 @@ function KindleAIDictionary:inspectCapturedContext(highlight, fallback_text)
         return
     end
 
-    self:collectPriorMentions(snapshot, function()
-        ExplanationViewer.showRequestInspection(Contract.encodeRequest(snapshot))
-    end)
+    ExplanationViewer.showRequestInspection(ContractV4.encodeInitialRequest(snapshot))
+end
+
+function KindleAIDictionary:requestV4Initial(snapshot)
+    local request_body, request_error = ContractV4.encodeInitialRequest(snapshot)
+    if not request_body then self:showLocalRequestError(request_error); return end
+    local invocation = self.lifecycle:start(snapshot)
+    if not invocation then UIManager:show(InfoMessage:new { text = _("An explanation request is already running.") }); return end
+    self.active_invocation = invocation
+    local loading = InfoMessage:new { text = _("Explaining… (tap to cancel)"), dismiss_callback = function()
+        if not invocation.programmatic_close then self:cancelInvocation(invocation, false) end
+    end }
+    invocation.loading = loading
+    UIManager:show(loading)
+    invocation.scheduled_start = function()
+        if not self:isActiveInvocation(invocation) then return end
+        invocation.scheduled_start = nil
+        if not self.lifecycle:beginModelCall(invocation, "initial_request") then self:cancelInvocation(invocation, true); return end
+        local cancel_transport = ApiClient.request(V4_INITIAL_ENDPOINT, request_body, function(result)
+            self:completeV4Initial(invocation, result)
+        end)
+        if self:isActiveInvocation(invocation) then invocation.cancel_transport = cancel_transport else cancel_transport() end
+    end
+    UIManager:nextTick(invocation.scheduled_start)
+end
+
+function KindleAIDictionary:completeV4Initial(invocation, transport_result)
+    if not self:isActiveInvocation(invocation) then return end
+    local result = ContractV4.parseInitialResult(transport_result)
+    if result.kind == "answer" then
+        self.lifecycle:finish(invocation, "answered")
+        self.active_invocation = nil
+        self:closeInvocationLoading(invocation)
+        ExplanationViewer.show(result.explanation, function() self:requestV4Initial(invocation.snapshot) end)
+        return
+    end
+    if result.kind ~= "search" or not self.lifecycle:transition(invocation, "awaiting_scope_confirmation") then
+        self:cancelInvocation(invocation, true)
+        self:showV4RequestError(invocation.snapshot, result)
+        return
+    end
+    invocation.initial_request_id, invocation.plan = result.request_id, result.plan
+    self:closeInvocationLoading(invocation)
+    self:authorizeV4Search(invocation)
+end
+
+function KindleAIDictionary:authorizeV4Search(invocation)
+    local needs_whole_book = false
+    for _, query in ipairs(invocation.plan.queries) do
+        if query.policyScope == "whole_book" then needs_whole_book = true end
+    end
+    local function execute(whole_book)
+        local authorizations = {}
+        for _, query in ipairs(invocation.plan.queries) do
+            authorizations[query.id] = query.policyScope == "whole_book"
+                and (whole_book and "approved_whole_book" or "reader_downgrade") or "not_required"
+        end
+        self:runV4Search(invocation, authorizations)
+    end
+    if not needs_whole_book then execute(false); return end
+    if self.whole_book_permission ~= nil then execute(self.whole_book_permission); return end
+    UIManager:show(ConfirmBox:new {
+        text = _("This explanation wants to search the whole book because it appears to be a textbook or reference book. Later sections may be included."),
+        ok_text = _("Search whole book"), cancel_text = _("Search earlier text only"),
+        ok_callback = function() self.whole_book_permission = true; execute(true) end,
+        cancel_callback = function() self.whole_book_permission = false; execute(false) end,
+    })
+end
+
+function KindleAIDictionary:runV4Search(invocation, authorizations)
+    if not self.lifecycle:beginRetrieval(invocation) then self:cancelInvocation(invocation, true); return end
+    local completed, searches = Trapper:dismissableRunInSubprocess(function()
+        return BookSearch.execute(self, invocation.snapshot, invocation.plan, authorizations)
+    end, nil)
+    if not self:isActiveInvocation(invocation) then return end
+    if not completed or type(searches) ~= "table" then self:cancelInvocation(invocation, true); return end
+    invocation.searches = searches
+    self:requestV4Completion(invocation)
+end
+
+function KindleAIDictionary:requestV4Completion(invocation)
+    local body, request_error = ContractV4.encodeCompletionRequest(invocation.snapshot, invocation.initial_request_id, invocation.plan, invocation.searches)
+    if not body then self:cancelInvocation(invocation, true); self:showLocalRequestError(request_error); return end
+    local loading = InfoMessage:new { text = _("Finishing explanation… (tap to cancel)"), dismiss_callback = function()
+        if not invocation.programmatic_close then self:cancelInvocation(invocation, false) end
+    end }
+    invocation.loading = loading
+    UIManager:show(loading)
+    invocation.scheduled_start = function()
+        if not self:isActiveInvocation(invocation) then return end
+        invocation.scheduled_start = nil
+        if not self.lifecycle:beginModelCall(invocation, "completion_request") then self:cancelInvocation(invocation, true); return end
+        local cancel_transport = ApiClient.request(V4_COMPLETION_ENDPOINT, body, function(result)
+            self:completeV4Completion(invocation, result)
+        end)
+        if self:isActiveInvocation(invocation) then invocation.cancel_transport = cancel_transport else cancel_transport() end
+    end
+    UIManager:nextTick(invocation.scheduled_start)
+end
+
+function KindleAIDictionary:completeV4Completion(invocation, transport_result)
+    if not self:isActiveInvocation(invocation) then return end
+    local result = ContractV4.parseCompletionResult(transport_result)
+    if result.kind ~= "success" then self:cancelInvocation(invocation, true); self:showV4RequestError(invocation.snapshot, result); return end
+    self.lifecycle:finish(invocation, "completed")
+    self.active_invocation = nil
+    self:closeInvocationLoading(invocation)
+    ExplanationViewer.show(result.explanation, function() self:requestV4Initial(invocation.snapshot) end)
 end
 
 function KindleAIDictionary:showLocalRequestError(code)
@@ -268,6 +369,15 @@ function KindleAIDictionary:showRequestError(snapshot, result)
             self:requestExplanation(snapshot)
         end,
         cancel_text = _("Close"),
+    })
+end
+
+function KindleAIDictionary:showV4RequestError(snapshot, result)
+    local message = self:requestErrorMessage(result)
+    if not result.retryable then UIManager:show(InfoMessage:new { text = message }); return end
+    UIManager:show(ConfirmBox:new {
+        text = message, ok_text = _("Retry"), cancel_text = _("Close"),
+        ok_callback = function() self:requestV4Initial(snapshot) end,
     })
 end
 
