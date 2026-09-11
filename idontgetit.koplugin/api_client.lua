@@ -3,6 +3,7 @@ local FFIUtil = require("ffi/util")
 local JSON = require("json")
 local UIManager = require("ui/uimanager")
 local Limits = require("limits")
+local logger = require("logger")
 
 local ApiClient = {}
 
@@ -66,6 +67,10 @@ local function perform_request(endpoint, request_body)
     end
     if type(status) ~= "number" then return { kind = "client_error", code = "invalid_background_result" } end
     local seconds = ApiClient.parseRetryAfter(headers)
+    -- Deliberately excludes request and response bodies: this is safe transport
+    -- telemetry for diagnosing a device-side request failure.
+    logger.info("Context Explain API response", endpoint, "status", status,
+        "request bytes", #request_body, "response bytes", response_size)
     return { kind = "http_response", status = status, body = table.concat(response_chunks), retry_after = seconds }
 end
 

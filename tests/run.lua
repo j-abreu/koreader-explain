@@ -53,6 +53,7 @@ local ui_stub = {
 package.preload["ffi"] = function() return ffi_stub end
 package.preload["ffi/util"] = function() return ffi_util_stub end
 package.preload["ui/uimanager"] = function() return ui_stub end
+package.preload.logger = function() return { info = function() end } end
 local ApiClient = require("api_client")
 
 local function assert_equal(actual, expected, label)
