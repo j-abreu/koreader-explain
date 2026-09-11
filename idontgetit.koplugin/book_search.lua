@@ -1,8 +1,13 @@
 local Limits = require("limits")
+local JSON = require("json")
 local Text = require("text")
 local util = require("util")
 
 local BookSearch = {}
+
+local function empty_array()
+    return JSON.util.InitArray({})
+end
 
 local function clean(value)
     return value == nil and "" or util.cleanupSelectedText(tostring(value))
@@ -56,7 +61,7 @@ function BookSearch.execute(plugin, snapshot, plan, authorizations)
     for _, query in ipairs(plan.queries) do
         local execution = { id = query.id, text = query.text, requestedScope = query.requestedScope, policyScope = query.policyScope,
             policyReason = query.policyReason, executedScope = query.policyScope, authorization = (authorizations and authorizations[query.id]) or "not_required",
-            status = "failed", candidateCount = 0, candidateLimitReached = false, matches = {} }
+            status = "failed", candidateCount = 0, candidateLimitReached = false, matches = empty_array() }
         if execution.authorization == "reader_downgrade" then execution.executedScope = "before_selection" end
         if execution.executedScope == "whole_book" and execution.authorization ~= "approved_whole_book" then
             execution.executedScope, execution.authorization = "before_selection", "reader_downgrade"

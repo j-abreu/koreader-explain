@@ -11,6 +11,7 @@ local fixtures = {
 }
 package.preload.json = function()
     return {
+        util = { InitArray = function(value) return value end },
         encode = function() return "{}" end,
         decode = function(value)
             if fixtures[value] then return fixtures[value] end
