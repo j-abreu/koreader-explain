@@ -6,6 +6,8 @@ local fixtures = {
     service_error = { version = 3, requestId = "request-2", error = { code = "service_unavailable", message = "Untrusted text", retryable = true } },
     timeout_error = { version = 3, requestId = "request-3", error = { code = "timeout", message = "Untrusted text", retryable = true } },
     invalid_schema = { version = 3, requestId = "request-4", explanation = { explanation = "", relatedTerms = {} } },
+    v4_answer = { version = 4, requestId = "request-v4", outcome = { type = "answer", explanation = { explanation = "A valid v4 answer.", relatedTerms = {} } } },
+    v4_search = { version = 4, requestId = "request-v4", outcome = { type = "search", plan = { bookMode = "narrative", classificationBasis = "Sequential fiction.", queries = { { id = "q1", text = "Mira key", requestedScope = "whole_book", policyScope = "before_selection", policyReason = "narrative_guard" } } } } },
 }
 package.preload.json = function()
     return {
@@ -33,6 +35,7 @@ local Context = require("context")
 local Lifecycle = require("lifecycle")
 local RetrievalPolicy = require("retrieval_policy")
 local SearchPlan = require("search_plan")
+local ContractV4 = require("contract_v4")
 local cleanup = { close = 0, terminate = 0, prevent = 0, allow = 0, unschedule = 0 }
 local ffi_stub = { C = { close = function() cleanup.close = cleanup.close + 1 end } }
 local ffi_util_stub = {
@@ -82,6 +85,8 @@ assert_equal(select(2, RetrievalPolicy.clamp("uncertain", "whole_book")), "uncer
 local normalized_plan = SearchPlan.normalize({ bookMode = "narrative", classificationBasis = "Sequential fiction.", queries = { { text = " Mira key ", requestedScope = "whole_book" } } })
 assert_equal(normalized_plan.queries[1].policyScope, "before_selection", "plan scope is clamped")
 assert_equal(SearchPlan.normalize({ bookMode = "reference", classificationBasis = "Reference.", queries = { { text = "same", requestedScope = "before_selection" }, { text = " SAME ", requestedScope = "before_selection" } } }), nil, "duplicate plan queries are rejected")
+assert_equal(ContractV4.parseInitialResult { kind = "http_response", status = 200, body = "v4_answer" }.kind, "answer", "v4 answer response")
+assert_equal(ContractV4.parseInitialResult { kind = "http_response", status = 200, body = "v4_search" }.plan.queries[1].policyScope, "before_selection", "v4 search plan response")
 local cancel = ApiClient.explain("request", function() error("cancelled requests must not complete") end)
 cancel()
 cancel()

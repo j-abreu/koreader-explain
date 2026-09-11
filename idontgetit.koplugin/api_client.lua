@@ -36,7 +36,7 @@ local function read_available(fd, maximum)
     return table.concat(chunks), false
 end
 
-local function perform_request(request_body)
+local function perform_request(endpoint, request_body)
     local https = require("ssl.https")
     local ltn12 = require("ltn12")
     local socketutil = require("socketutil")
@@ -50,7 +50,7 @@ local function perform_request(request_body)
     end
     socketutil:set_timeout(10, 30)
     local success, status, headers = https.request {
-        url = ENDPOINT, method = "POST",
+        url = endpoint, method = "POST",
         headers = { ["Accept"] = "application/json", ["Content-Type"] = "application/json", ["Content-Length"] = tostring(#request_body) },
         source = ltn12.source.string(request_body), sink = bounded_sink,
     }
@@ -69,9 +69,13 @@ local function perform_request(request_body)
     return { kind = "http_response", status = status, body = table.concat(response_chunks), retry_after = seconds }
 end
 
-function ApiClient.explain(request_body, on_complete)
+function ApiClient.request(endpoint, request_body, on_complete)
+    if type(endpoint) ~= "string" or endpoint == "" then
+        if on_complete then on_complete({ kind = "client_error", code = "invalid_endpoint" }) end
+        return function() end
+    end
     local pid, read_fd = FFIUtil.runInSubProcess(function(_, write_fd)
-        local ok, result = xpcall(function() return perform_request(request_body) end, debug.traceback)
+        local ok, result = xpcall(function() return perform_request(endpoint, request_body) end, debug.traceback)
         FFIUtil.writeToFD(write_fd, JSON.encode(ok and { ok = true, result = result } or { ok = false }), true)
     end, true)
     if not pid then
@@ -114,6 +118,10 @@ function ApiClient.explain(request_body, on_complete)
     end
     UIManager:scheduleIn(POLL_SECONDS, poll)
     return function() finalize(true) end
+end
+
+function ApiClient.explain(request_body, on_complete)
+    return ApiClient.request(ENDPOINT, request_body, on_complete)
 end
 
 return ApiClient
