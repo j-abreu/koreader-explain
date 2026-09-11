@@ -66,7 +66,14 @@ end
 
 local function valid_explanation(value)
     return type(value) == "table" and exact_keys(value, { explanation = true, relatedTerms = true })
-        and bounded(value.explanation, Limits.EXPLANATION) and type(value.relatedTerms) == "table" and #value.relatedTerms == 0
+        and bounded(value.explanation, Limits.EXPLANATION) and type(value.relatedTerms) == "table"
+        and #value.relatedTerms <= Limits.RELATED_TERMS
+        and (function()
+            for _, term in ipairs(value.relatedTerms) do
+                if not bounded(term, Limits.RELATED_TERM) then return false end
+            end
+            return true
+        end)()
 end
 
 local function error_result(code, retryable, retry_after)

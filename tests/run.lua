@@ -6,7 +6,7 @@ local fixtures = {
     service_error = { version = 3, requestId = "request-2", error = { code = "service_unavailable", message = "Untrusted text", retryable = true } },
     timeout_error = { version = 3, requestId = "request-3", error = { code = "timeout", message = "Untrusted text", retryable = true } },
     invalid_schema = { version = 3, requestId = "request-4", explanation = { explanation = "", relatedTerms = {} } },
-    v4_answer = { version = 4, requestId = "request-v4", outcome = { type = "answer", explanation = { explanation = "A valid v4 answer.", relatedTerms = {} } } },
+    v4_answer = { version = 4, requestId = "request-v4", outcome = { type = "answer", explanation = { explanation = "A valid v4 answer.", relatedTerms = { "similar concept" } } } },
     v4_search = { version = 4, requestId = "request-v4", outcome = { type = "search", plan = { bookMode = "narrative", classificationBasis = "Sequential fiction.", queries = { { id = "q1", text = "Mira key", requestedScope = "whole_book", policyScope = "before_selection", policyReason = "narrative_guard" } } } } },
 }
 package.preload.json = function()
@@ -88,6 +88,7 @@ local normalized_plan = SearchPlan.normalize({ bookMode = "narrative", classific
 assert_equal(normalized_plan.queries[1].policyScope, "before_selection", "plan scope is clamped")
 assert_equal(SearchPlan.normalize({ bookMode = "reference", classificationBasis = "Reference.", queries = { { text = "same", requestedScope = "before_selection" }, { text = " SAME ", requestedScope = "before_selection" } } }), nil, "duplicate plan queries are rejected")
 assert_equal(ContractV4.parseInitialResult { kind = "http_response", status = 200, body = "v4_answer" }.kind, "answer", "v4 answer response")
+assert_equal(ContractV4.parseInitialResult { kind = "http_response", status = 200, body = "v4_answer" }.explanation.relatedTerms[1], "similar concept", "v4 related terms response")
 assert_equal(ContractV4.parseInitialResult { kind = "http_response", status = 200, body = "v4_search" }.plan.queries[1].policyScope, "before_selection", "v4 search plan response")
 local fake_document = {
     provider = "crengine",
