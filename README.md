@@ -1,37 +1,52 @@
 # KOReader Explain
 
-A context-aware dictionary and explanation plugin for jailbroken Kindles running KOReader.
+A context-aware explanation plugin for jailbroken Kindles running KOReader. It adds **Explain in context** to selection and dictionary menus and renders the result in a native KOReader viewer.
 
-The first vertical slice captures selected text and bounded ebook context, calls the shared Context Explain API's book endpoint, and displays its structured explanation in a native KOReader interface.
+## Current state
 
-## Status
+Feature 04 is implemented and validated on a Kindle with CREngine-backed EPUBs.
 
-The first live device slice is scaffolded. It adds **Explain in context** to KOReader's selection menu and **Explain** to the native dictionary popup, captures bounded ebook context plus available book and chapter metadata, calls the source-bound version 2 Context Explain API in a background subprocess, validates its response, and displays the structured explanation in a native viewer.
+- The plugin captures a bounded selection, sentence-aware local context, and book metadata.
+- It calls the Context Explain API's v4 book route. The model either answers directly or returns a bounded plan of one to three local searches.
+- Local search runs only after that plan. Narrative books search before the selection; whole-book search requires explicit reader approval and is limited to reference-style books.
+- Results are bounded (50 inspected candidates per query, three excerpts per query, six total) and exclude TOC-detectable front matter.
+- A single completion request uses the captured excerpts to produce the final spoiler-safe explanation.
+- **Inspect context**, **Probe local search**, and **Inspect last retrieval** make request and retrieval behavior auditable from KOReader.
+- Related terms appear only for a lowercase, single-word ordinary concept when useful general synonyms exist. They are suppressed for phrases, passages, situations, proper names, and book-specific terms.
 
-The explanation request shows a cancellable loading message. Recoverable failures provide **Retry**, while a successful explanation provides **Regenerate**; both resubmit the exact captured snapshot and never overlap another request. **Inspect context** is a local-only action that shows the exact version 3 JSON request body, including any earlier mentions, without calling the API.
+CREngine position and search APIs are required for local retrieval. Unsupported document types retain the safe context-only explanation path.
 
-For positioned CREngine selections, the plugin captures the containing sentence separately from adjacent prose, targeting 50 words per side and capping each side at 100 words and 1,200 Unicode scalar values. It falls back to a bounded 50-word window when sentence boundaries or stable positions are unavailable. For one- to three-word selections in CREngine-backed reflowable books (such as EPUB), it also searches locally for up to five earlier occurrences and sends a 280-character excerpt for each match. PDF and other unsupported formats retain the safe word-window fallback.
-
-## Source layout
+## Layout
 
 ```text
 idontgetit.koplugin/
-├── _meta.lua
-├── main.lua
-├── context.lua
-├── contract.lua
-├── api_client.lua
-└── explanation_viewer.lua
+├── main.lua                 # KOReader menus and v4 request lifecycle
+├── context.lua              # bounded selection and context capture
+├── contract_v4.lua          # v4 request/response boundary
+├── book_search.lua          # bounded local retrieval
+├── retrieval_audit.lua      # reader-visible retrieval audit
+├── api_client.lua           # cancellable HTTPS transport
+└── explanation_viewer.lua   # native explanation UI
+tests/run.lua                # focused Lua checks
 ```
 
-## Verification
+## Build and verify
 
-Run the focused pure-Lua checks with KOReader's bundled LuaJIT (or a compatible LuaJIT runtime):
+The plugin is Lua; there is no compilation step. Use KOReader's bundled LuaJIT where possible.
 
 ```sh
 luajit tests/run.lua .
 ```
 
+On a Kindle, syntax-check changed modules and run the same tests with the device runtime:
+
+```sh
+/mnt/us/koreader/luajit -e 'assert(loadstring(io.stdin:read("*a")))' < idontgetit.koplugin/main.lua
+/mnt/us/koreader/luajit tests/run.lua /mnt/us/koreader/plugins
+```
+
+To install for device testing, copy `idontgetit.koplugin/` into KOReader's `plugins/` directory, preserving a backup of the installed plugin first, then restart KOReader. The API is deployed separately from the sibling `context-explain-api` repository.
+
 ## Documentation
 
-Implementation, installation, and contributor guidance live in this repository. Product-planning notes are maintained separately.
+This repository contains plugin implementation, tests, and installation guidance. Product plans and tracker notes live in the private planning workspace.
