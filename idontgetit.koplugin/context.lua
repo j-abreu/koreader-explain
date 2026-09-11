@@ -244,7 +244,9 @@ function Context.probeLocalSearch(plugin, snapshot)
         return { supported = false, reason = "The selected phrase exceeds the local-search query limits." }
     end
     local ok, results = pcall(function()
-        return document:findAllText(snapshot.selected_text, true, PRIOR_MENTION_CONTEXT_WORDS, 50, false)
+        -- v2026.07.1 returns max_hits + 1 results, so request one fewer to
+        -- enforce the contract's 50-candidate inspection cap.
+        return document:findAllText(snapshot.selected_text, true, PRIOR_MENTION_CONTEXT_WORDS, Limits.CANDIDATE_HITS - 1, false)
     end)
     if not ok or type(results) ~= "table" then
         return { supported = false, reason = "The document search call failed." }
@@ -268,7 +270,7 @@ function Context.probeLocalSearch(plugin, snapshot)
         supported = true,
         query = snapshot.selected_text,
         result_count = #results,
-        cap_reached = #results == 50,
+        cap_reached = #results >= Limits.CANDIDATE_HITS,
         before_count = before_count,
         after_or_overlap_count = after_or_overlap_count,
         samples = samples,
@@ -328,7 +330,7 @@ function Context.formatLocalSearchProbe(probe)
     local sections = {
         "Local search probe",
         "Query\n" .. probe.query,
-        string.format("Results\n%d returned; 50-hit cap reached: %s\nStrictly before selection: %d\nAt/after or overlapping: %d", probe.result_count, probe.cap_reached and "yes" or "no", probe.before_count, probe.after_or_overlap_count),
+        string.format("Results\n%d returned; %d-candidate cap reached: %s\nStrictly before selection: %d\nAt/after or overlapping: %d", probe.result_count, Limits.CANDIDATE_HITS, probe.cap_reached and "yes" or "no", probe.before_count, probe.after_or_overlap_count),
     }
     for index, sample in ipairs(probe.samples) do
         sections[#sections + 1] = string.format("Sample %d — %s\nPosition fields: start=%s, end=%s\n%s", index, sample.relation, sample.has_start and "yes" or "no", sample.has_end and "yes" or "no", sample.excerpt)

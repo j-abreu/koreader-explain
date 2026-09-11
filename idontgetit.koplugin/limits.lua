@@ -23,4 +23,5 @@ return {
     RESPONSE_BODY_BYTES = 16 * 1024,
     QUERY_WORDS = 24,
     QUERY_SCALARS = 200,
+    CANDIDATE_HITS = 50,
 }
