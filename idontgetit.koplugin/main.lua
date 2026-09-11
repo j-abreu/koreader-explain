@@ -8,6 +8,7 @@ local InfoMessage = require("ui/widget/infomessage")
 local InputContainer = require("ui/widget/container/inputcontainer")
 local Lifecycle = require("lifecycle")
 local BookSearch = require("book_search")
+local RetrievalAudit = require("retrieval_audit")
 local NetworkMgr = require("ui/network/manager")
 local Trapper = require("ui/trapper")
 local UIManager = require("ui/uimanager")
@@ -79,6 +80,20 @@ function KindleAIDictionary:init()
     end
 end
 
+function KindleAIDictionary:addToMainMenu(menu_items)
+    menu_items.idontgetit_retrieval = {
+        text = _("Explain in context"),
+        sub_item_table = {
+            {
+                text = _("Inspect last retrieval"),
+                callback = function()
+                    ExplanationViewer.showLocalSearchProbe(RetrievalAudit.format(self.last_retrieval_audit))
+                end,
+            },
+        },
+    }
+end
+
 function KindleAIDictionary:probeLocalSearch(highlight, fallback_text)
     local snapshot, capture_error = Context.capture(self, highlight, fallback_text)
     if not snapshot then
@@ -143,6 +158,7 @@ function KindleAIDictionary:requestV4Initial(snapshot)
     local invocation = self.lifecycle:start(snapshot)
     if not invocation then UIManager:show(InfoMessage:new { text = _("An explanation request is already running.") }); return end
     self.active_invocation = invocation
+    self.last_retrieval_audit = RetrievalAudit.start(invocation.id)
     local loading = InfoMessage:new { text = _("Explaining… (tap to cancel)"), dismiss_callback = function()
         if not invocation.programmatic_close then self:cancelInvocation(invocation, false) end
     end }
@@ -164,6 +180,8 @@ function KindleAIDictionary:completeV4Initial(invocation, transport_result)
     if not self:isActiveInvocation(invocation) then return end
     local result = ContractV4.parseInitialResult(transport_result)
     if result.kind == "answer" then
+        self.last_retrieval_audit.status = "answered"
+        self.last_retrieval_audit.decision = { type = "answer", request_id = result.request_id }
         self.lifecycle:finish(invocation, "answered")
         self.active_invocation = nil
         self:closeInvocationLoading(invocation)
@@ -176,6 +194,8 @@ function KindleAIDictionary:completeV4Initial(invocation, transport_result)
         return
     end
     invocation.initial_request_id, invocation.plan = result.request_id, result.plan
+    self.last_retrieval_audit.status = "searching"
+    self.last_retrieval_audit.decision = { type = "search", request_id = result.request_id, plan = result.plan }
     self:closeInvocationLoading(invocation)
     self:authorizeV4Search(invocation)
 end
@@ -211,6 +231,7 @@ function KindleAIDictionary:runV4Search(invocation, authorizations)
     if not self:isActiveInvocation(invocation) then return end
     if not completed or type(searches) ~= "table" then self:cancelInvocation(invocation, true); return end
     invocation.searches = searches
+    self.last_retrieval_audit.searches = searches
     self:requestV4Completion(invocation)
 end
 
@@ -237,7 +258,13 @@ end
 function KindleAIDictionary:completeV4Completion(invocation, transport_result)
     if not self:isActiveInvocation(invocation) then return end
     local result = ContractV4.parseCompletionResult(transport_result)
-    if result.kind ~= "success" then self:cancelInvocation(invocation, true); self:showV4RequestError(invocation.snapshot, result); return end
+    if result.kind ~= "success" then
+        self.last_retrieval_audit.status = "completion_failed"
+        self.last_retrieval_audit.completion = { status = "failed" }
+        self:cancelInvocation(invocation, true); self:showV4RequestError(invocation.snapshot, result); return
+    end
+    self.last_retrieval_audit.status = "completed"
+    self.last_retrieval_audit.completion = { status = "completed", request_id = result.request_id }
     self.lifecycle:finish(invocation, "completed")
     self.active_invocation = nil
     self:closeInvocationLoading(invocation)
@@ -383,6 +410,8 @@ end
 
 function KindleAIDictionary:onClose()
     self:cancelInvocation(self.active_invocation, true)
+    self.last_retrieval_audit = nil
+    self.whole_book_permission = nil
 end
 
 return KindleAIDictionary

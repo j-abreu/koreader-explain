@@ -37,6 +37,7 @@ local RetrievalPolicy = require("retrieval_policy")
 local SearchPlan = require("search_plan")
 local ContractV4 = require("contract_v4")
 local BookSearch = require("book_search")
+local RetrievalAudit = require("retrieval_audit")
 local cleanup = { close = 0, terminate = 0, prevent = 0, allow = 0, unschedule = 0 }
 local ffi_stub = { C = { close = function() cleanup.close = cleanup.close + 1 end } }
 local ffi_util_stub = {
@@ -106,6 +107,12 @@ local fake_searches = assert(BookSearch.execute(fake_plugin, { selection_start =
 assert_equal(fake_searches[1].candidateCount, 5, "search candidate count")
 assert_equal(#fake_searches[1].matches, 3, "search returns bounded prior excerpts")
 assert_equal(fake_searches[1].matches[1].text:find("front", 1, true), nil, "front matter is excluded")
+local audit = RetrievalAudit.start(7)
+audit.status = "completed"
+audit.decision = { type = "search", request_id = "request-7", plan = normalized_plan }
+audit.searches = fake_searches
+audit.completion = { status = "completed", request_id = "request-8" }
+assert(RetrievalAudit.format(audit):find("Requested searches", 1, true), "audit formats validated plan")
 local cancel = ApiClient.explain("request", function() error("cancelled requests must not complete") end)
 cancel()
 cancel()
