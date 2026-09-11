@@ -4,7 +4,7 @@ local _ = require("gettext")
 
 local ExplanationViewer = {}
 
-function ExplanationViewer.show(explanation, retry_callback)
+function ExplanationViewer.show(explanation, regenerate_callback)
     local sections = {
         explanation.explanation,
     }
@@ -21,10 +21,10 @@ function ExplanationViewer.show(explanation, retry_callback)
         buttons_table = {
             {
                 {
-                    text = _("Retry"),
+                    text = _("Regenerate"),
                     callback = function()
                         UIManager:close(viewer)
-                        retry_callback()
+                        regenerate_callback()
                     end,
                 },
                 {

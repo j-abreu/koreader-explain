@@ -1,12 +1,14 @@
 local util = require("util")
+local Limits = require("limits")
+local Text = require("text")
 
 local Context = {}
 
 local SURROUNDING_WORDS = 50
-local MAX_SELECTION_CHARACTERS = 1000
-local MAX_SURROUNDING_CHARACTERS = 450
-local MAX_PRIOR_MENTIONS = 5
-local MAX_PRIOR_MENTION_CHARACTERS = 280
+local MAX_SELECTION_CHARACTERS = Limits.PRODUCT_SELECTED_TEXT
+local MAX_SURROUNDING_CHARACTERS = Limits.SURROUNDING_TEXT
+local MAX_PRIOR_MENTIONS = Limits.PRIOR_MENTIONS
+local MAX_PRIOR_MENTION_CHARACTERS = Limits.PRODUCT_PRIOR_MENTION
 local PRIOR_MENTION_CONTEXT_WORDS = 20
 
 local function clean(value)
@@ -18,18 +20,7 @@ local function clean(value)
 end
 
 local function truncate_characters(value, maximum, keep_end)
-    local characters = util.splitToChars(value)
-    if #characters <= maximum then
-        return value
-    end
-
-    local result = {}
-    local first = keep_end and (#characters - maximum + 1) or 1
-    local last = keep_end and #characters or maximum
-    for index = first, last do
-        result[#result + 1] = characters[index]
-    end
-    return table.concat(result)
+    return Text.truncate(value, maximum, keep_end) or ""
 end
 
 local function current_chapter(plugin, selected)
@@ -79,15 +70,15 @@ local function make_prior_mention(previous, matched, following)
         return ""
     end
 
-    local matched_length = #util.splitToChars(matched)
+    local matched_length = Text.count(matched) or 0
     if matched_length >= MAX_PRIOR_MENTION_CHARACTERS then
         return truncate_characters(matched, MAX_PRIOR_MENTION_CHARACTERS, false)
     end
 
     local remaining = MAX_PRIOR_MENTION_CHARACTERS - matched_length
-    local before_length = math.min(#util.splitToChars(previous), math.floor(remaining / 2))
-    local after_length = math.min(#util.splitToChars(following), remaining - before_length)
-    before_length = math.min(#util.splitToChars(previous), remaining - after_length)
+    local before_length = math.min(Text.count(previous) or 0, math.floor(remaining / 2))
+    local after_length = math.min(Text.count(following) or 0, remaining - before_length)
+    before_length = math.min(Text.count(previous) or 0, remaining - after_length)
 
     local before = truncate_characters(previous, before_length, true)
     local after = truncate_characters(following, after_length, false)
@@ -149,7 +140,7 @@ function Context.capture(plugin, highlight, fallback_text)
     if selected_text == "" then
         return nil, "No text is selected."
     end
-    if #util.splitToChars(selected_text) > MAX_SELECTION_CHARACTERS then
+    if (Text.count(selected_text) or math.huge) > MAX_SELECTION_CHARACTERS then
         return nil, "The selection is too long to explain."
     end
 
@@ -185,12 +176,23 @@ function Context.capture(plugin, highlight, fallback_text)
         selected_text = selected_text,
         before = before,
         after = after,
-        title = truncate_characters(clean(props.title), 500, false),
-        authors = clean(authors),
-        language = truncate_characters(clean(props.language), 100, false),
-        chapter = truncate_characters(current_chapter(plugin, selected), 500, false),
+        title = truncate_characters(clean(props.title), Limits.BOOK_TITLE, false),
+        authors = truncate_characters(clean(authors), Limits.BOOK_AUTHOR, false),
+        language = truncate_characters(clean(props.language), Limits.BOOK_LANGUAGE, false),
+        format = Context.documentFormat(document),
+        chapter = truncate_characters(current_chapter(plugin, selected), Limits.CHAPTER_TITLE, false),
         selection_start = selected and selected.pos0 or nil,
     }
+end
+
+function Context.documentFormat(document)
+    local file = document and document.file
+    if type(file) ~= "string" then return "" end
+    local extension = file:match("%.([A-Za-z0-9]+)$")
+    if not extension then return "" end
+    extension = extension:lower()
+    if #extension > Limits.BOOK_FORMAT or not extension:match("^[a-z0-9]+$") then return "" end
+    return extension
 end
 
 function Context.formatForInspection(snapshot)
