@@ -25,7 +25,7 @@ local function parse_api_error(result)
         or not exact_keys(response, { version = true, requestId = true, error = true }) then return nil end
     local error = response.error
     if type(error) ~= "table" or not exact_keys(error, { code = true, message = true, retryable = true })
-        or not (error.code == "invalid_request" or error.code == "service_unavailable" or error.code == "timeout" or error.code == "internal_error")
+        or not (error.code == "invalid_request" or error.code == "service_unavailable" or error.code == "usage_limit_reached" or error.code == "timeout" or error.code == "internal_error")
         or not non_empty_string(error.message, Limits.ERROR_MESSAGE) or type(error.retryable) ~= "boolean"
         or not non_empty_string(response.requestId, Limits.REQUEST_ID) then return nil end
     return {

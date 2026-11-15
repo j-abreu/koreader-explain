@@ -6,6 +6,7 @@ local fixtures = {
     service_error = { version = 3, requestId = "request-2", error = { code = "service_unavailable", message = "Untrusted text", retryable = true } },
     timeout_error = { version = 3, requestId = "request-3", error = { code = "timeout", message = "Untrusted text", retryable = true } },
     illustration_timeout = { version = 1, requestId = "illustration-timeout", error = { code = "timeout", message = "The illustration request timed out.", retryable = true } },
+    illustration_usage_limit = { version = 1, requestId = "illustration-limit", error = { code = "usage_limit_reached", message = "The illustration service has reached its daily usage limit. Please try again after it resets.", retryable = true } },
     invalid_schema = { version = 3, requestId = "request-4", explanation = { explanation = "", relatedTerms = {} } },
     v4_answer = { version = 4, requestId = "request-v4", outcome = { type = "answer", explanation = { explanation = "A valid v4 answer.", relatedTerms = { "similar concept" } } } },
     v4_search = { version = 4, requestId = "request-v4", outcome = { type = "search", plan = { bookMode = "narrative", classificationBasis = "Sequential fiction.", queries = { { id = "q1", text = "Mira key", requestedScope = "whole_book", policyScope = "before_selection", policyReason = "narrative_guard" } } } } },
@@ -83,6 +84,9 @@ local illustration_timeout = IllustrationContract.parseResult { kind = "http_res
 assert_equal(illustration_timeout.message, "The illustration request timed out.", "illustration error message is preserved")
 assert_equal(illustration_timeout.request_id, "illustration-timeout", "illustration request ID is preserved")
 assert_equal(illustration_timeout.retryable, true, "illustration timeout is retryable")
+local illustration_usage_limit = IllustrationContract.parseResult { kind = "http_response", status = 503, body = "illustration_usage_limit" }
+assert_equal(illustration_usage_limit.code, "usage_limit_reached", "illustration usage limit is preserved")
+assert_equal(illustration_usage_limit.message, "The illustration service has reached its daily usage limit. Please try again after it resets.", "illustration usage-limit message is preserved")
 assert_equal(ApiClient.parseRetryAfter { ["retry-after"] = "0.5" }, 1, "small retry-after clamp")
 assert_equal(ApiClient.parseRetryAfter { ["Retry-After"] = "7200" }, 3600, "large retry-after clamp")
 assert_equal(ApiClient.parseRetryAfter { ["retry-after"] = "Wed, 21 Oct" }, nil, "retry-after date is ignored")
