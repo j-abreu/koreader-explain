@@ -5,6 +5,7 @@ local fixtures = {
     success = { version = 3, requestId = "request-1", explanation = { explanation = "A valid explanation.", relatedTerms = {} } },
     service_error = { version = 3, requestId = "request-2", error = { code = "service_unavailable", message = "Untrusted text", retryable = true } },
     timeout_error = { version = 3, requestId = "request-3", error = { code = "timeout", message = "Untrusted text", retryable = true } },
+    illustration_timeout = { version = 1, requestId = "illustration-timeout", error = { code = "timeout", message = "The illustration request timed out.", retryable = true } },
     invalid_schema = { version = 3, requestId = "request-4", explanation = { explanation = "", relatedTerms = {} } },
     v4_answer = { version = 4, requestId = "request-v4", outcome = { type = "answer", explanation = { explanation = "A valid v4 answer.", relatedTerms = { "similar concept" } } } },
     v4_search = { version = 4, requestId = "request-v4", outcome = { type = "search", plan = { bookMode = "narrative", classificationBasis = "Sequential fiction.", queries = { { id = "q1", text = "Mira key", requestedScope = "whole_book", policyScope = "before_selection", policyReason = "narrative_guard" } } } } },
@@ -37,6 +38,7 @@ local Lifecycle = require("lifecycle")
 local RetrievalPolicy = require("retrieval_policy")
 local SearchPlan = require("search_plan")
 local ContractV4 = require("contract_v4")
+local IllustrationContract = require("illustration_contract")
 local BookSearch = require("book_search")
 local RetrievalAudit = require("retrieval_audit")
 local cleanup = { close = 0, terminate = 0, prevent = 0, allow = 0, unschedule = 0 }
@@ -77,6 +79,10 @@ assert_equal(limited.code, "rate_limited", "rate limit")
 assert_equal(limited.retry_after, 60, "retry-after")
 assert_equal(result("http_response", 503, "malformed").retryable, true, "5xx retryability")
 assert_equal(result("http_response", 400, "malformed").retryable, false, "4xx retryability")
+local illustration_timeout = IllustrationContract.parseResult { kind = "http_response", status = 503, body = "illustration_timeout" }
+assert_equal(illustration_timeout.message, "The illustration request timed out.", "illustration error message is preserved")
+assert_equal(illustration_timeout.request_id, "illustration-timeout", "illustration request ID is preserved")
+assert_equal(illustration_timeout.retryable, true, "illustration timeout is retryable")
 assert_equal(ApiClient.parseRetryAfter { ["retry-after"] = "0.5" }, 1, "small retry-after clamp")
 assert_equal(ApiClient.parseRetryAfter { ["Retry-After"] = "7200" }, 3600, "large retry-after clamp")
 assert_equal(ApiClient.parseRetryAfter { ["retry-after"] = "Wed, 21 Oct" }, nil, "retry-after date is ignored")

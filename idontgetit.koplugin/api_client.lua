@@ -12,6 +12,7 @@ local POLL_SECONDS = 0.1
 local MAX_RESPONSE_BODY = Limits.RESPONSE_BODY_BYTES
 local MAX_BACKGROUND_RESULT = 24 * 1024
 local MAX_IMAGE_BYTES = 1024 * 1024
+local MAX_IMAGE_ERROR_BODY = 4 * 1024
 
 function ApiClient.parseRetryAfter(headers)
     local value = headers and (headers["retry-after"] or headers["Retry-After"])
@@ -136,8 +137,15 @@ local function perform_download(endpoint, request_body, destination)
     local file, open_error = io.open(temporary, "wb")
     if not file then return { kind = "client_error", code = "image_write_failed" } end
     local size, exceeded, write_failed = 0, false, false
+    local error_chunks, error_size = {}, 0
     local function sink(chunk)
         if not chunk then return 1 end
+        if error_size < MAX_IMAGE_ERROR_BODY then
+            local remaining = MAX_IMAGE_ERROR_BODY - error_size
+            local captured = chunk:sub(1, remaining)
+            error_chunks[#error_chunks + 1] = captured
+            error_size = error_size + #captured
+        end
         if size + #chunk > MAX_IMAGE_BYTES then exceeded = true; return nil, "image exceeds limit" end
         local ok = file:write(chunk)
         if not ok then write_failed = true; return nil, "image write failed" end
@@ -163,7 +171,9 @@ local function perform_download(endpoint, request_body, destination)
     if type(status) ~= "number" then os.remove(temporary); return { kind = "client_error", code = "invalid_image" } end
     if status ~= 200 then
         os.remove(temporary)
-        return { kind = "http_response", status = status, body = "", retry_after = ApiClient.parseRetryAfter(headers) }
+        local request_id = type(headers) == "table" and (headers["x-request-id"] or headers["X-Request-Id"]) or nil
+        logger.info("Context Explain illustration error", endpoint, "status", status, "request id", request_id or "unknown")
+        return { kind = "http_response", status = status, body = table.concat(error_chunks), retry_after = ApiClient.parseRetryAfter(headers), request_id = request_id }
     end
     local content_type = type(headers) == "table" and (headers["content-type"] or headers["Content-Type"]) or nil
     if type(content_type) ~= "string" or not content_type:lower():match("^image/jpeg%s*;?") then os.remove(temporary); return { kind = "client_error", code = "invalid_image" } end

@@ -424,6 +424,13 @@ function KindleAIDictionary:completeInvocation(invocation, transport_result)
 end
 
 function KindleAIDictionary:requestErrorMessage(result)
+    if type(result.message) == "string" and result.message ~= "" then
+        local message = result.message
+        if type(result.request_id) == "string" and result.request_id ~= "" then
+            message = message .. "\n\n" .. _("Request ID:") .. " " .. result.request_id
+        end
+        return message
+    end
     if result.code == "network_unavailable" or result.code == "connection_failed" then
         return _("Could not connect to the explanation service.")
     elseif result.code == "timeout" then
