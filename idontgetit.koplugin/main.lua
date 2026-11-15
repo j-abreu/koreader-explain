@@ -2,6 +2,7 @@ local ApiClient = require("api_client")
 local ConfirmBox = require("ui/widget/confirmbox")
 local Contract = require("contract")
 local ContractV4 = require("contract_v4")
+local IllustrationContract = require("illustration_contract")
 local Context = require("context")
 local ExplanationViewer = require("explanation_viewer")
 local InfoMessage = require("ui/widget/infomessage")
@@ -12,10 +13,13 @@ local RetrievalAudit = require("retrieval_audit")
 local NetworkMgr = require("ui/network/manager")
 local Trapper = require("ui/trapper")
 local UIManager = require("ui/uimanager")
+local DataStorage = require("datastorage")
+local lfs = require("libs/libkoreader-lfs")
 local _ = require("gettext")
 
 local V4_INITIAL_ENDPOINT = "https://context-explain-api.jere-lab.workers.dev/v4/explain/book"
 local V4_COMPLETION_ENDPOINT = "https://context-explain-api.jere-lab.workers.dev/v4/explain/book/complete"
+local ILLUSTRATION_ENDPOINT = "https://context-explain-api.jere-lab.workers.dev/v1/illustrate/book"
 
 local KindleAIDictionary = InputContainer:extend {
     name = "idontgetit",
@@ -33,6 +37,9 @@ function KindleAIDictionary:init()
                 self:showCapturedContext(highlight)
             end,
         }
+    end)
+    self.ui.highlight:addToHighlightDialog("idontgetit_visualize", function(highlight)
+        return { text = _("Visualize excerpt"), callback = function() self:visualizeExcerpt(highlight) end }
     end)
     self.ui.highlight:addToHighlightDialog("idontgetit_inspect", function(highlight)
         return {
@@ -79,6 +86,60 @@ function KindleAIDictionary:init()
             end,
         }
     end
+end
+
+function KindleAIDictionary:illustrationPath(invocation)
+    local cache = DataStorage:getDataDir() .. "/cache"
+    local plugin_cache = cache .. "/idontgetit"
+    local illustrations = plugin_cache .. "/illustrations"
+    if lfs.attributes(plugin_cache, "mode") ~= "directory" then lfs.mkdir(plugin_cache) end
+    if lfs.attributes(illustrations, "mode") ~= "directory" then lfs.mkdir(illustrations) end
+    return illustrations .. "/illustration-" .. tostring(invocation.id) .. ".jpg"
+end
+
+function KindleAIDictionary:visualizeExcerpt(highlight, fallback_text)
+    local snapshot, capture_error = Context.capture(self, highlight, fallback_text)
+    if not snapshot then UIManager:show(InfoMessage:new { text = _(capture_error) }); return end
+    NetworkMgr:runWhenOnline(function() self:requestIllustration(snapshot) end)
+end
+
+function KindleAIDictionary:requestIllustration(snapshot)
+    local request_body, request_error = IllustrationContract.encodeRequest(snapshot)
+    if not request_body then self:showLocalRequestError(request_error); return end
+    local invocation = self.lifecycle:start(snapshot)
+    if not invocation then UIManager:show(InfoMessage:new { text = _("An explanation request is already running.") }); return end
+    self.active_invocation = invocation
+    local loading = InfoMessage:new { text = _("Visualizing… (tap to cancel)"), dismiss_callback = function()
+        if not invocation.programmatic_close then self:cancelInvocation(invocation, false) end
+    end }
+    invocation.loading = loading
+    UIManager:show(loading)
+    invocation.scheduled_start = function()
+        if not self:isActiveInvocation(invocation) then return end
+        invocation.scheduled_start = nil
+        if not self.lifecycle:beginModelCall(invocation, "initial_request") then self:cancelInvocation(invocation, true); return end
+        local cancel_transport = ApiClient.download(ILLUSTRATION_ENDPOINT, request_body, self:illustrationPath(invocation), function(result)
+            self:completeIllustration(invocation, result)
+        end)
+        if self:isActiveInvocation(invocation) then invocation.cancel_transport = cancel_transport else cancel_transport() end
+    end
+    UIManager:nextTick(invocation.scheduled_start)
+end
+
+function KindleAIDictionary:completeIllustration(invocation, transport_result)
+    if not self:isActiveInvocation(invocation) then return end
+    local result = IllustrationContract.parseResult(transport_result)
+    self.lifecycle:finish(invocation, result.kind == "success" and "completed" or "failed")
+    self.active_invocation = nil
+    self:closeInvocationLoading(invocation)
+    if result.kind == "success" then ExplanationViewer.showIllustration(result.path); return end
+    self:showIllustrationError(invocation.snapshot, result)
+end
+
+function KindleAIDictionary:showIllustrationError(snapshot, result)
+    local message = self:requestErrorMessage(result)
+    if not result.retryable then UIManager:show(InfoMessage:new { text = message }); return end
+    UIManager:show(ConfirmBox:new { text = message, ok_text = _("Retry"), cancel_text = _("Close"), ok_callback = function() self:requestIllustration(snapshot) end })
 end
 
 function KindleAIDictionary:addToMainMenu(menu_items)

@@ -11,6 +11,7 @@ local ENDPOINT = "https://context-explain-api.jere-lab.workers.dev/v3/explain/bo
 local POLL_SECONDS = 0.1
 local MAX_RESPONSE_BODY = Limits.RESPONSE_BODY_BYTES
 local MAX_BACKGROUND_RESULT = 24 * 1024
+local MAX_IMAGE_BYTES = 1024 * 1024
 
 function ApiClient.parseRetryAfter(headers)
     local value = headers and (headers["retry-after"] or headers["Retry-After"])
@@ -122,6 +123,97 @@ function ApiClient.request(endpoint, request_body, on_complete)
         else
             UIManager:scheduleIn(POLL_SECONDS, poll)
         end
+    end
+    UIManager:scheduleIn(POLL_SECONDS, poll)
+    return function() finalize(true) end
+end
+
+local function perform_download(endpoint, request_body, destination)
+    local https = require("ssl.https")
+    local ltn12 = require("ltn12")
+    local socketutil = require("socketutil")
+    local temporary = destination .. ".part"
+    local file, open_error = io.open(temporary, "wb")
+    if not file then return { kind = "client_error", code = "image_write_failed" } end
+    local size, exceeded, write_failed = 0, false, false
+    local function sink(chunk)
+        if not chunk then return 1 end
+        if size + #chunk > MAX_IMAGE_BYTES then exceeded = true; return nil, "image exceeds limit" end
+        local ok = file:write(chunk)
+        if not ok then write_failed = true; return nil, "image write failed" end
+        size = size + #chunk
+        return 1
+    end
+    socketutil:set_timeout(10, 60)
+    local success, status, headers = https.request {
+        url = endpoint, method = "POST",
+        headers = { ["Accept"] = "image/jpeg, application/json", ["Content-Type"] = "application/json", ["Content-Length"] = tostring(#request_body) },
+        source = ltn12.source.string(request_body), sink = sink,
+    }
+    socketutil:reset_timeout()
+    file:close()
+    if exceeded or write_failed then os.remove(temporary); return { kind = "client_error", code = "invalid_image" } end
+    if not success then
+        os.remove(temporary)
+        if status == "timeout" then return { kind = "transport_error", code = "timeout" } end
+        local detail = tostring(status):lower()
+        if detail:find("network is unreachable", 1, true) or detail:find("network unreachable", 1, true) then return { kind = "transport_error", code = "network_unavailable" } end
+        return { kind = "transport_error", code = "connection_failed" }
+    end
+    if type(status) ~= "number" then os.remove(temporary); return { kind = "client_error", code = "invalid_image" } end
+    if status ~= 200 then
+        os.remove(temporary)
+        return { kind = "http_response", status = status, body = "", retry_after = ApiClient.parseRetryAfter(headers) }
+    end
+    local content_type = type(headers) == "table" and (headers["content-type"] or headers["Content-Type"]) or nil
+    if type(content_type) ~= "string" or not content_type:lower():match("^image/jpeg%s*;?") then os.remove(temporary); return { kind = "client_error", code = "invalid_image" } end
+    local image = io.open(temporary, "rb")
+    local magic = image and image:read(3) or nil
+    if image then image:close() end
+    if size < 3 or magic ~= "\255\216\255" then os.remove(temporary); return { kind = "client_error", code = "invalid_image" } end
+    local renamed = os.rename(temporary, destination)
+    if not renamed then os.remove(temporary); return { kind = "client_error", code = "image_write_failed" } end
+    logger.info("Context Explain illustration response", endpoint, "status", status, "request bytes", #request_body, "image bytes", size)
+    return { kind = "downloaded_image", path = destination }
+end
+
+function ApiClient.download(endpoint, request_body, destination, on_complete)
+    if type(endpoint) ~= "string" or endpoint == "" or type(destination) ~= "string" or destination == "" then
+        if on_complete then on_complete({ kind = "client_error", code = "invalid_endpoint" }) end
+        return function() end
+    end
+    local pid, read_fd = FFIUtil.runInSubProcess(function(_, write_fd)
+        local ok, result = xpcall(function() return perform_download(endpoint, request_body, destination) end, debug.traceback)
+        FFIUtil.writeToFD(write_fd, JSON.encode(ok and { ok = true, result = result } or { ok = false }), true)
+    end, true)
+    if not pid then if on_complete then on_complete({ kind = "client_error", code = "background_failure" }) end; return function() end end
+    local active, finalized, standby_prevented = true, false, true
+    local response_data, poll = "", nil
+    UIManager:preventStandby()
+    local function finalize(cancelled)
+        if finalized then return false end
+        finalized, active = true, false
+        if poll then UIManager:unschedule(poll) end
+        if cancelled then FFIUtil.terminateSubProcess(pid); os.remove(destination .. ".part") end
+        ffi.C.close(read_fd)
+        if standby_prevented then UIManager:allowStandby(); standby_prevented = false end
+        return true
+    end
+    local function complete(result, terminate_child)
+        if finalize(terminate_child) and on_complete then on_complete(result) end
+    end
+    local function append_available()
+        local chunk, exceeded = read_available(read_fd, MAX_BACKGROUND_RESULT - #response_data)
+        response_data = response_data .. chunk
+        return not exceeded and #response_data <= MAX_BACKGROUND_RESULT
+    end
+    poll = function()
+        if not active then return end
+        if not append_available() then complete({ kind = "client_error", code = "invalid_background_result" }, true); return end
+        if FFIUtil.isSubProcessDone(pid) then
+            local ok, envelope = pcall(JSON.decode, response_data)
+            if not ok or type(envelope) ~= "table" or envelope.ok ~= true or type(envelope.result) ~= "table" then complete({ kind = "client_error", code = "invalid_background_result" }) else complete(envelope.result) end
+        else UIManager:scheduleIn(POLL_SECONDS, poll) end
     end
     UIManager:scheduleIn(POLL_SECONDS, poll)
     return function() finalize(true) end

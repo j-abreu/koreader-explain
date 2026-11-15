@@ -1,8 +1,17 @@
 local TextViewer = require("ui/widget/textviewer")
+local ImageViewer = require("ui/widget/imageviewer")
 local UIManager = require("ui/uimanager")
 local _ = require("gettext")
 
 local ExplanationViewer = {}
+
+function ExplanationViewer.showIllustration(path)
+    UIManager:show(ImageViewer:new {
+        file = path,
+        fullscreen = true,
+        with_title_bar = false,
+    })
+end
 
 function ExplanationViewer.show(explanation, regenerate_callback)
     local sections = {
