@@ -41,14 +41,6 @@ function KindleAIDictionary:init()
     self.ui.highlight:addToHighlightDialog("idontgetit_visualize", function(highlight)
         return { text = _("Visualize"), callback = function() self:visualizeExcerpt(highlight) end }
     end)
-    self.ui.highlight:addToHighlightDialog("idontgetit_inspect", function(highlight)
-        return {
-            text = _("Inspect context"),
-            callback = function()
-                self:inspectCapturedContext(highlight)
-            end,
-        }
-    end)
     self.ui.highlight:addToHighlightDialog("idontgetit_search_probe", function(highlight)
         return {
             text = _("Probe local search"),
@@ -66,14 +58,6 @@ function KindleAIDictionary:init()
             insert_first = true,
             callback = function(dict_popup)
                 self:showCapturedContext(dict_popup.highlight, dict_popup.word)
-            end,
-        }
-        self.ui.dictionary:addToDictButtons {
-            id = "idontgetit_inspect",
-            menu_text = _("Inspect context"),
-            text = _("Inspect context"),
-            callback = function(dict_popup)
-                self:inspectCapturedContext(dict_popup.highlight, dict_popup.word)
             end,
         }
         self.ui.dictionary:addToDictButtons {

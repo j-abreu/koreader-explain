@@ -12,7 +12,7 @@ The plugin is intended for EPUB and other reflowable books backed by KOReader's 
 - Searches earlier content by default for narrative books. Whole-book search is offered only with explicit reader approval for reference-style material.
 - Excludes detectable front matter from retrieval and keeps search results bounded: up to three queries, 50 inspected candidates per query, three excerpts per query, and six excerpts overall.
 - Shows related terms for ordinary lowercase single-word concepts when useful general synonyms exist. It omits them for names, phrases, passages, situations, and book-specific terms.
-- Provides **Inspect context**, **Probe local search**, and **Inspect last retrieval** to make requests and local retrieval behavior inspectable on-device.
+- Provides **Probe local search** and **Inspect last retrieval** to inspect local retrieval behavior on-device.
 
 Position-aware local retrieval requires CREngine search and XPointer APIs. PDFs and other unsupported document types still provide bounded context, but cannot supply local evidence when an explanation requires retrieval.
 
