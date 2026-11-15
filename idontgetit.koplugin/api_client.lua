@@ -152,7 +152,7 @@ local function perform_download(endpoint, request_body, destination)
         size = size + #chunk
         return 1
     end
-    socketutil:set_timeout(10, 60)
+    socketutil:set_timeout(30, 120)
     local success, status, headers = https.request {
         url = endpoint, method = "POST",
         headers = { ["Accept"] = "image/jpeg, application/json", ["Content-Type"] = "application/json", ["Content-Length"] = tostring(#request_body) },
@@ -163,7 +163,8 @@ local function perform_download(endpoint, request_body, destination)
     if exceeded or write_failed then os.remove(temporary); return { kind = "client_error", code = "invalid_image" } end
     if not success then
         os.remove(temporary)
-        if status == "timeout" then return { kind = "transport_error", code = "timeout" } end
+        logger.warn("Context Explain illustration transport failure", endpoint, "status", tostring(status))
+        if status == "timeout" or status == "wantread" then return { kind = "transport_error", code = "timeout" } end
         local detail = tostring(status):lower()
         if detail:find("network is unreachable", 1, true) or detail:find("network unreachable", 1, true) then return { kind = "transport_error", code = "network_unavailable" } end
         return { kind = "transport_error", code = "connection_failed" }
