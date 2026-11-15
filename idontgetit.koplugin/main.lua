@@ -39,7 +39,7 @@ function KindleAIDictionary:init()
         }
     end)
     self.ui.highlight:addToHighlightDialog("idontgetit_visualize", function(highlight)
-        return { text = _("Visualize excerpt"), callback = function() self:visualizeExcerpt(highlight) end }
+        return { text = _("Visualize"), callback = function() self:visualizeExcerpt(highlight) end }
     end)
     self.ui.highlight:addToHighlightDialog("idontgetit_inspect", function(highlight)
         return {
